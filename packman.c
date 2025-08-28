@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <conio.h>
 #include <math.h>
+#include <time.h>
 #include "colors.h"
 
 // 맵 요소
@@ -14,6 +15,8 @@
 #define WARP_ZONE 6
 
 #define MAX_GHOSTS 4
+#define GHOST_ZONE_X 13
+#define GHOST_ZONE_Y 14
 
 #define ORANGE_GHOST_CHASE_DISTANCE 64
 
@@ -29,6 +32,7 @@ int screen_index = 0;
 
 // 게임 상태 관련 변수
 int game_over = 0;
+int game_time = 0;
 int power_mode = 0;
 int power_mode_timer = 0;
 
@@ -89,6 +93,14 @@ typedef enum {
     DIR_RIGHT
 } Direction;
 
+typedef struct {
+    Direction directions[4];
+    Direction best_direction;
+    Direction opposite_direction;
+    int count;
+    int best_distance;
+} DirectionResult;
+
 // 유령과 팩맨 충돌 관련 열거형 정의
 typedef enum {
     COLLISION_NONE = 0,
@@ -101,16 +113,20 @@ typedef enum {
 typedef struct {
     int x;
     int y;
+    int prev_x;
+    int prev_y;
     Direction direction;
     int lives;
 } Pacman;
 
 // 고스트 구조체 정의
-typedef enum { CHASING, FRIGHTENED, EATEN, EXITING, WAITING, RETURNING } GhostState;
+typedef enum { CHASING, FRIGHTENED, EXITING, WAITING, RETURNING } GhostState;
 
 typedef struct {
     int x;
     int y;
+    int prev_x;
+    int prev_y;
     int direction;
     GhostState state;
     char color;
@@ -155,7 +171,13 @@ void decideGhostDirection(Ghost* ghost, const Pacman* pacman);
 int canGhostMoveTo(int x, int y, GhostState state);
 void moveGhost(Ghost* ghost); void returnToGhostZone(Ghost* ghost); void killGhost(Ghost* ghost);
 void findPacmanFuturePosition(const Pacman* pacman, int* future_x, int* future_y, int look_ahead);
-void updatePacman(Pacman* pacman, int* score); void processInput(Pacman* pacman);
+void updatePacman(Pacman* pacman, int* score, int* cookies_eaten); void processInput(Pacman* pacman);
+void updateFrightenedGhost(Ghost* ghost);
+void handleGhostEaten(Ghost* ghost, int* score);
+void handlePacmanDeath(Pacman* pacman);
+void updateEatenGhost(Ghost* ghost);
+void getNextPosition(int* x, int* y, Direction dir);
+void activatePowerMode(); void drawPacmanDebugInfo(const Pacman* pacman); void drawGameStateInfo(); void drawMapInfo();
 
 // 유틸리티 함수들
 int isIntersection(int next_x, int next_y){
@@ -170,20 +192,139 @@ int isIntersection(int next_x, int next_y){
 }
 
 CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost){
-    if(pacman->x != ghost->x || pacman->y != ghost->y) return COLLISION_NONE;
-
-    switch(ghost->state){
+    
+    if(pacman->x == ghost->x && pacman->y == ghost->y)
+    {
+        // 충돌 발생
+        switch(ghost->state){
         case CHASING:
-            return COLLISION_PACMAN_DIES;
+            return COLLISION_PACMAN_DIES; // 팩맨이 죽음
         case FRIGHTENED:
-            return COLLISION_GHOST_EATEN;
-        case EATEN:
+            return COLLISION_GHOST_EATEN; // 고스트가 먹힘
         case RETURNING:
         case EXITING:
         case WAITING:
             return COLLISION_IGNORED;
         default:
             return COLLISION_NONE;
+        }
+    }
+
+    if(pacman->x == ghost->prev_x && pacman->y == ghost->prev_y &&
+       pacman->prev_x == ghost->x && pacman->prev_y == ghost->y)
+    {
+        // 서로 위치 바꿈
+        switch(ghost->state){
+        case CHASING:
+            return COLLISION_PACMAN_DIES; // 팩맨이 죽음
+        case FRIGHTENED:
+            return COLLISION_GHOST_EATEN; // 고스트가 먹힘
+        case RETURNING:
+        case EXITING:
+        case WAITING:
+            return COLLISION_IGNORED;
+        default:
+            return COLLISION_NONE;
+        }
+    }
+    
+    return COLLISION_NONE;
+    
+}
+
+DirectionResult findPossilbeDirections(const Ghost* ghost, int target_x, int target_y, int exclude_oppsite){
+    DirectionResult result = {0};
+    result.best_direction = DIR_NONE;
+    result.best_distance = INT_MAX;
+    result.opposite_direction = DIR_NONE;
+    if(exclude_oppsite){
+        switch(ghost->direction){
+            case DIR_UP: result.opposite_direction = DIR_DOWN; break;
+            case DIR_DOWN: result.opposite_direction = DIR_UP; break;
+            case DIR_LEFT: result.opposite_direction = DIR_RIGHT; break;
+            case DIR_RIGHT: result.opposite_direction = DIR_LEFT; break;
+        }
+    }
+
+    Direction check_directions[] = {DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT};
+
+    for(int i = 0; i < 4; i++){
+        if(exclude_oppsite && check_directions[i] == result.opposite_direction) continue;
+
+        int next_x = ghost->x , next_y = ghost->y;
+        getNextPosition(&next_x, &next_y, check_directions[i]);
+
+        if(canGhostMoveTo(next_x, next_y, ghost->state)) {
+            result.directions[result.count++] = check_directions[i];
+            
+            // 목표가 있다면
+            if(target_x != -1 && target_y != -1){
+                int distance = abs(next_x - target_x) + abs(next_y - target_y);
+                if(distance < result.best_distance){
+                    result.best_distance = distance;
+                    result.best_direction = check_directions[i];
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+void handleCollisions(Pacman* pacman, int* score){
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        CollisionResult result = checkCollision(pacman, &ghosts[i]);
+
+        switch(result){
+            case COLLISION_PACMAN_DIES:
+                handlePacmanDeath(pacman);
+                break;
+            case COLLISION_GHOST_EATEN:
+                handleGhostEaten(&ghosts[i], score);
+                break;
+
+            default: 
+                break;
+        }
+    }
+}
+
+void handlePacmanDeath(Pacman* pacman){
+    pacman->lives--;
+
+    if(pacman->lives <= 0){
+        game_over = 1;
+        return;
+    }
+
+    // 팩맨 위치 초기화
+    pacman->x = 13;
+    pacman->y = 23;
+    pacman->direction = DIR_NONE;
+
+    power_mode = 0;
+    power_mode_timer = 0;
+
+    // 모든 유령들 대기 상태로 초기화
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        if(ghosts[i].state == FRIGHTENED){
+            ghosts[i].state = CHASING;
+        }
+    }
+}
+
+void handleGhostEaten(Ghost* ghost, int* score){
+    static int ghost_combo = 0;
+    int points = 200 * (1 << ghost_combo);
+    *score += points;
+    ghost_combo++;
+
+    ghost->state = RETURNING;
+    ghost->target_x = GHOST_ZONE_X;
+    ghost->target_y = GHOST_ZONE_Y;
+
+    if(power_mode_timer <= 0){
+        ghost_combo = 0;
     }
 }
 
@@ -289,16 +430,16 @@ void initialize() {
 
 void initializeGhosts() {
     // 빨간 GHOST
-    ghosts[0] = (Ghost){13, 13, DIR_NONE, WAITING, 'R', 0, -1, -1};
+    ghosts[0] = (Ghost){12, 14, 12, 14, DIR_NONE, WAITING, 'R', 0, -1, -1};
 
     // 분홍 유령
-    ghosts[1] = (Ghost){14, 13, DIR_NONE, WAITING, 'P', 0, -1, -1};
+    ghosts[1] = (Ghost){13, 14, 13, 14, DIR_NONE, WAITING, 'P', 0, -1, -1};
 
     // 청록 유령
-    ghosts[2] = (Ghost){14, 14, DIR_NONE, WAITING, 'G', 0, -1, -1};
+    ghosts[2] = (Ghost){14, 14, 14, 14, DIR_NONE, WAITING, 'G', 0, -1, -1};
 
     // 주황 유령
-    ghosts[3] = (Ghost){13, 14, DIR_NONE, WAITING, 'O', 0, -1, -1};
+    ghosts[3] = (Ghost){15, 14, 15, 14, DIR_NONE, WAITING, 'O', 0, -1, -1};
 
     for(int i = 0; i < MAX_GHOSTS; i++){
         enqueueGhost(&ghosts[i]);
@@ -351,10 +492,58 @@ void render(const Pacman* pacman, int score) {
                 drawEntity(x, y, "C", PACMAN_COLOR);
             } else if(is_ghost_here){
                 switch(current_ghost->color){
-                    case 'R': drawEntity(x, y, "R", GHOST_RED_COLOR); break;
-                    case 'P': drawEntity(x, y, "P", GHOST_PINK_COLOR); break;
-                    case 'G': drawEntity(x, y, "G", GHOST_GREEN_COLOR); break;
-                    case 'O': drawEntity(x, y, "O", GHOST_ORANGE_COLOR); break;
+                    case 'R': 
+                        if(current_ghost->state == FRIGHTENED){
+                            if(power_mode_timer > 60){
+                                drawEntity(x, y, "R", ANSI_BLUE ANSI_BOLD); // 파란색
+                            } else {
+                                drawEntity(x, y, "R", ANSI_WHITE ANSI_BLINK); // 흰색 깜박임
+                            }
+                        } else if(current_ghost->state == RETURNING){
+                            drawEntity(x, y, "◇", ANSI_WHITE);  // 눈만 남은 상태
+                        } else {
+                            drawEntity(x, y, "R", GHOST_RED_COLOR);
+                        }
+                        break;
+                    case 'P': 
+                        if(current_ghost->state == FRIGHTENED){
+                            if(power_mode_timer > 60){
+                                drawEntity(x, y, "P", ANSI_BLUE ANSI_BOLD); // 파란색
+                            } else {
+                                drawEntity(x, y, "P", ANSI_WHITE ANSI_BLINK); // 흰색 깜박임
+                            }
+                        } else if(current_ghost->state == RETURNING){
+                            drawEntity(x, y, "◇", ANSI_WHITE);  // 눈만 남은 상태
+                        } else {
+                            drawEntity(x, y, "P", GHOST_PINK_COLOR);
+                        }
+                        break;
+                    case 'G': 
+                        if(current_ghost->state == FRIGHTENED){
+                            if(power_mode_timer > 60){
+                                drawEntity(x, y, "G", ANSI_BLUE ANSI_BOLD); // 파란색
+                            } else {
+                                drawEntity(x, y, "G", ANSI_WHITE ANSI_BLINK); // 흰색 깜박임
+                            }
+                        } else if(current_ghost->state == RETURNING){
+                            drawEntity(x, y, "◇", ANSI_WHITE);  // 눈만 남은 상태
+                        } else {
+                            drawEntity(x, y, "G", GHOST_GREEN_COLOR);
+                        }
+                        break;
+                    case 'O': 
+                        if(current_ghost->state == FRIGHTENED){
+                            if(power_mode_timer > 60){
+                                drawEntity(x, y, "O", ANSI_BLUE ANSI_BOLD); // 파란색
+                            } else {
+                                drawEntity(x, y, "O", ANSI_WHITE ANSI_BLINK); // 흰색 깜박임
+                            }
+                        } else if(current_ghost->state == RETURNING){
+                            drawEntity(x, y, "◇", ANSI_WHITE);  // 눈만 남은 상태
+                        } else {
+                            drawEntity(x, y, "O", GHOST_ORANGE_COLOR);
+                        }
+                        break;
                 }
             } else if(is_target_here){
                 // 목표 위치 표시
@@ -385,17 +574,21 @@ void render(const Pacman* pacman, int score) {
 
         // 디버그 모드 상태 표시
         int score_x = MAP_WIDTH * 2 + 2;
-        drawEntity(score_x / 2, 15, "DEBUG MODE", DEBUG_COLOR);
-        drawEntity(score_x / 2, 16, "SPACE: Toggle", INFO_COLOR);
+        int debug_start_y = 9 + (MAX_GHOSTS * 6) + 4;
+        drawEntity(score_x / 2, debug_start_y, "DEBUG MODE", DEBUG_COLOR);
+        drawEntity(score_x / 2, debug_start_y + 1, "SPACE: Toggle", INFO_COLOR);
 
+        // 고스트 디버그 정보 (왼쪽)
         drawGhostDebugInfo();
-        
-        // int score_x = MAP_WIDTH * 2 + 2;
-        // int debug_y = 16;  // 시작 Y 위치
-        
-        // ANSI 이스케이프 시퀀스에 변수 사용
-        // printAtPosition(score_x / 2, debug_y, "DEBUG MODE", DEBUG_COLOR);
-        // printAtPosition(score_x / 2, debug_y + 1, "SPACE: Toggle", INFO_COLOR);
+
+        // 팩맨 디버그 정보 (오른쪽)
+        drawPacmanDebugInfo(pacman);
+
+        // 게임 상태 정보 (오른쪽 중간)
+        drawGameStateInfo();
+
+        // 맵 정보(오른쪽 아래)
+        drawMapInfo();
     }
 
 }
@@ -433,28 +626,220 @@ void drawScore(int score, int lives){
 
 void drawGhostDebugInfo(){
     int score_x = MAP_WIDTH * 2 + 2;
-
-    // drawEntity 사용 (더블버퍼 호환)
-    drawEntity(score_x / 2, 9, "PINK GHOST:", GHOST_PINK_COLOR);
+    const char* ghost_names[] = {"RED", "PINK", "GREEN", "ORANGE"};
+    const char* ghost_colors[] = {GHOST_RED_COLOR, GHOST_PINK_COLOR, GHOST_GREEN_COLOR, GHOST_ORANGE_COLOR};
+    const char* state_names[] = {"CHASING", "FRIGHTENED", "RETURNING", "EXITING", "WAITING", "UNKNOWN"};
     
-    char buffer[50];
-    sprintf(buffer, "X: %d", ghosts[1].x);
-    drawEntity(score_x / 2, 10, buffer, INFO_COLOR);
-    
-    sprintf(buffer, "Y: %d", ghosts[1].y);
-    drawEntity(score_x / 2, 11, buffer, INFO_COLOR);
-    
-    const char* state_names[] = {"CHASING", "FRIGHTENED", "EATEN", "EXITING", "WAITING", "RETURNING"};
-    sprintf(buffer, "STATE: %s", state_names[ghosts[1].state]);
-    drawEntity(score_x / 2, 12, buffer, SUCCESS_COLOR);
-    
-    sprintf(buffer, "PATH: %d", ghosts[1].path_index);
-    drawEntity(score_x / 2, 13, buffer, INFO_COLOR);
-    
-    if(ghosts[1].target_x != -1 && ghosts[1].target_y != -1) {
-        sprintf(buffer, "TARGET: (%d,%d)", ghosts[1].target_x, ghosts[1].target_y);
-        drawEntity(score_x / 2, 14, buffer, ANSI_YELLOW);
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        int base_y = 9 + (i * 6);  // 각 고스트마다 6줄씩 사용
+        char buffer[60];
+        
+        // 고스트 이름 헤더
+        sprintf(buffer, "%s GHOST:", ghost_names[i]);
+        drawEntity(score_x / 2, base_y, buffer, ghost_colors[i]);
+        
+        // 위치 정보
+        sprintf(buffer, "POS: (%d,%d)", ghosts[i].x, ghosts[i].y);
+        drawEntity(score_x / 2, base_y + 1, buffer, INFO_COLOR);
+        
+        // 상태 정보 (state 값 범위 체크)
+        int state_index = (ghosts[i].state >= 0 && ghosts[i].state < 5) ? ghosts[i].state : 5;
+        sprintf(buffer, "STATE: %s", state_names[state_index]);
+        drawEntity(score_x / 2, base_y + 2, buffer, SUCCESS_COLOR);
+        
+        // 방향 정보
+        const char* direction_names[] = {"NONE", "UP", "DOWN", "LEFT", "RIGHT"};
+        int dir_index = (ghosts[i].direction >= 0 && ghosts[i].direction <= 4) ? ghosts[i].direction : 0;
+        sprintf(buffer, "DIR: %s", direction_names[dir_index]);
+        drawEntity(score_x / 2, base_y + 3, buffer, INFO_COLOR);
+        
+        // 목표 좌표 (CHASING이나 EXITING 상태일 때만)
+        if((ghosts[i].state == CHASING || ghosts[i].state == EXITING || ghosts[i].state == RETURNING) &&
+           ghosts[i].target_x != -1 && ghosts[i].target_y != -1) {
+            sprintf(buffer, "TARGET: (%d,%d)", ghosts[i].target_x, ghosts[i].target_y);
+            drawEntity(score_x / 2, base_y + 4, buffer, ANSI_YELLOW);
+        } else {
+            sprintf(buffer, "TARGET: NONE");
+            drawEntity(score_x / 2, base_y + 4, buffer, ANSI_BRIGHT_BLACK);
+        }
+        
+        // PATH INDEX (EXITING이나 RETURNING 상태일 때만)
+        if(ghosts[i].state == EXITING || ghosts[i].state == RETURNING) {
+            sprintf(buffer, "PATH: %d/%d", ghosts[i].path_index, exit_path_length);
+            drawEntity(score_x / 2, base_y + 5, buffer, ANSI_CYAN);
+        } else {
+            sprintf(buffer, "PATH: -");
+            drawEntity(score_x / 2, base_y + 5, buffer, ANSI_BRIGHT_BLACK);
+        }
     }
+    
+    // 큐와 파워 정보는 제거 (drawGameStateInfo로 이동)
+}
+
+void drawPacmanDebugInfo(const Pacman* pacman) {
+    // 팩맨 디버그 정보를 고스트 정보 오른쪽에 표시
+    int score_x = MAP_WIDTH * 2 + 2;
+    int pacman_x = score_x + 20;  // 고스트 정보 오른쪽으로 20칸 이동
+    int base_y = 9;
+    char buffer[60];
+    
+    // 팩맨 헤더
+    sprintf(buffer, "PACMAN INFO:");
+    drawEntity(pacman_x / 2, base_y, buffer, PACMAN_COLOR);
+    
+    // 위치 정보
+    sprintf(buffer, "POS: (%d,%d)", pacman->x, pacman->y);
+    drawEntity(pacman_x / 2, base_y + 1, buffer, INFO_COLOR);
+    
+    // 방향 정보
+    const char* direction_names[] = {"NONE", "UP", "DOWN", "LEFT", "RIGHT"};
+    int dir_index = (pacman->direction >= 0 && pacman->direction <= 4) ? pacman->direction : 0;
+    sprintf(buffer, "DIR: %s", direction_names[dir_index]);
+    drawEntity(pacman_x / 2, base_y + 2, buffer, SUCCESS_COLOR);
+    
+    // 생명 정보
+    sprintf(buffer, "LIVES: %d", pacman->lives);
+    drawEntity(pacman_x / 2, base_y + 3, buffer, ANSI_RED ANSI_BOLD);
+    
+    // 현재 타일 정보
+    const char* tile_names[] = {"EMPTY", "WALL", "COOKIE", "POWER", "DOOR", "ZONE", "WARP"};
+    int tile_type = (map[pacman->y][pacman->x] >= 0 && map[pacman->y][pacman->x] <= 6) ? 
+                    map[pacman->y][pacman->x] : 0;
+    sprintf(buffer, "TILE: %s", tile_names[tile_type]);
+    drawEntity(pacman_x / 2, base_y + 4, buffer, ANSI_YELLOW);
+    
+    // 다음 위치 정보 (방향키 눌렸을 때의 이동 예상 위치)
+    int next_x = pacman->x, next_y = pacman->y;
+    switch(pacman->direction) {
+        case DIR_UP: next_y--; break;
+        case DIR_DOWN: next_y++; break;
+        case DIR_LEFT: next_x--; break;
+        case DIR_RIGHT: next_x++; break;
+    }
+    
+    if(next_x >= 0 && next_x < MAP_WIDTH && next_y >= 0 && next_y < MAP_HEIGHT) {
+        sprintf(buffer, "NEXT: (%d,%d)", next_x, next_y);
+        drawEntity(pacman_x / 2, base_y + 5, buffer, ANSI_CYAN);
+        
+        // 다음 타일 타입
+        int next_tile = map[next_y][next_x];
+        const char* next_tile_name = (next_tile >= 0 && next_tile <= 6) ? 
+                                   tile_names[next_tile] : "INVALID";
+        sprintf(buffer, "NEXT TILE: %s", next_tile_name);
+        drawEntity(pacman_x / 2, base_y + 6, buffer, ANSI_MAGENTA);
+    } else {
+        sprintf(buffer, "NEXT: OUT");
+        drawEntity(pacman_x / 2, base_y + 5, buffer, ANSI_RED);
+        sprintf(buffer, "NEXT TILE: WALL");
+        drawEntity(pacman_x / 2, base_y + 6, buffer, ANSI_RED);
+    }
+    
+    // 가장 가까운 고스트와 충돌 가능성 표시
+    int min_distance = INT_MAX;
+    int closest_ghost = -1;
+    
+    for(int i = 0; i < MAX_GHOSTS; i++) {
+        if(ghosts[i].state != WAITING) {
+            int distance = abs(pacman->x - ghosts[i].x) + abs(pacman->y - ghosts[i].y);
+            if(distance < min_distance) {
+                min_distance = distance;
+                closest_ghost = i;
+            }
+        }
+    }
+    
+    if(closest_ghost != -1) {
+        const char* ghost_names[] = {"RED", "PINK", "GREEN", "ORANGE"};
+        sprintf(buffer, "CLOSEST: %s (%d)", ghost_names[closest_ghost], min_distance);
+        
+        // 충돌 위험도에 따른 색상
+        const char* color = ANSI_WHITE;
+        if(min_distance == 0) {
+            // 같은 위치 = 충돌!
+            sprintf(buffer, "COLLISION! %s", ghost_names[closest_ghost]);
+            if(ghosts[closest_ghost].state == FRIGHTENED) {
+                color = ANSI_BLUE ANSI_BOLD;  // 고스트 먹을 수 있음
+            } else if(ghosts[closest_ghost].state == CHASING) {
+                color = ANSI_RED ANSI_BLINK;  // 위험!
+            }
+        } else if(min_distance <= 2) {
+            color = ANSI_RED ANSI_BOLD;  // 위험
+        } else if(min_distance <= 5) {
+            color = ANSI_YELLOW;  // 주의
+        }
+        
+        drawEntity(pacman_x / 2, base_y + 7, buffer, color);
+    }
+}
+
+void drawGameStateInfo() {
+    // 게임 상태 정보를 팩맨 정보 아래에 표시
+    int score_x = MAP_WIDTH * 2 + 2;
+    int state_x = score_x + 20;
+    int base_y = 17;  // 팩맨 정보 아래
+    char buffer[60];
+    
+    // 게임 상태 헤더
+    sprintf(buffer, "GAME STATE:");
+    drawEntity(state_x / 2, base_y, buffer, ANSI_WHITE ANSI_BOLD);
+    
+    // 큐 정보
+    sprintf(buffer, "QUEUE: %d/%d", queue_count, MAX_GHOSTS);
+    drawEntity(state_x / 2, base_y + 1, buffer, ANSI_CYAN);
+    
+    // 파워 모드 정보
+    if(power_mode) {
+        sprintf(buffer, "POWER: %d", power_mode_timer);
+        drawEntity(state_x / 2, base_y + 2, buffer, ANSI_RED ANSI_BLINK);
+    } else {
+        sprintf(buffer, "POWER: OFF");
+        drawEntity(state_x / 2, base_y + 2, buffer, ANSI_BRIGHT_BLACK);
+    }
+    
+    // 게임 오버 상태
+    if(game_over) {
+        sprintf(buffer, "STATUS: GAME OVER");
+        drawEntity(state_x / 2, base_y + 3, buffer, ANSI_RED ANSI_BLINK);
+    } else {
+        sprintf(buffer, "STATUS: PLAYING");
+        drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN);
+    }
+    
+    // 릴리즈된 고스트 수
+    sprintf(buffer, "RELEASED: %d/%d", MAX_GHOSTS - queue_count, MAX_GHOSTS);
+    drawEntity(state_x / 2, base_y + 4, buffer, ANSI_YELLOW);
+}
+
+void drawMapInfo() {
+    // 맵 관련 정보
+    int score_x = MAP_WIDTH * 2 + 2;
+    int map_x = score_x + 20;
+    int base_y = 23;  // 게임 상태 정보 아래
+    char buffer[60];
+    
+    // 맵 정보 헤더
+    sprintf(buffer, "MAP INFO:");
+    drawEntity(map_x / 2, base_y, buffer, ANSI_WHITE ANSI_BOLD);
+    
+    // 맵 크기
+    sprintf(buffer, "SIZE: %dx%d", MAP_WIDTH, MAP_HEIGHT);
+    drawEntity(map_x / 2, base_y + 1, buffer, INFO_COLOR);
+    
+    // 남은 쿠키 수 계산 (선택사항)
+    int remaining_cookies = 0;
+    int remaining_power = 0;
+    for(int y = 0; y < MAP_HEIGHT; y++) {
+        for(int x = 0; x < MAP_WIDTH; x++) {
+            if(map[y][x] == COOKIE) remaining_cookies++;
+            if(map[y][x] == POWER_COOKIE) remaining_power++;
+        }
+    }
+    
+    sprintf(buffer, "COOKIES: %d", remaining_cookies);
+    drawEntity(map_x / 2, base_y + 2, buffer, COOKIE_COLOR);
+    
+    sprintf(buffer, "POWER: %d", remaining_power);
+    drawEntity(map_x / 2, base_y + 3, buffer, POWER_COOKIE_COLOR);
 }
 
 void clear() {
@@ -537,6 +922,8 @@ void updateExitingGhost(Ghost* ghost) {
             }
         }
     }
+
+    moveGhost(ghost);
 }
 
 void updateRedGhost(Ghost* ghost, const Pacman* pacman){
@@ -603,20 +990,96 @@ void updateOrangeGhost(Ghost* ghost, const Pacman* pacman){
     }
 }
 
+void updateEatenGhost(Ghost* ghost){
+    ghost->target_x = GHOST_ZONE_X;
+    ghost->target_y = GHOST_ZONE_Y;
+
+    decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
+    moveGhost(ghost);
+
+    if(ghost->x == GHOST_ZONE_X && ghost->y == GHOST_ZONE_Y){
+        ghost->state = WAITING;
+        ghost->direction = DIR_NONE;
+        enqueueGhost(ghost);
+    }
+}
+
+void updateFrightenedGhost(Ghost* ghost){
+    DirectionResult result = findPossilbeDirections(ghost, -1, -1, 1);
+    
+    ghost->target_x = -1;
+    ghost->target_y = -1;
+    
+    if(result.count > 0){
+        if(result.count >= 2) {  // T자형 이상 교차로
+            // 70% 확률로 직진, 30% 확률로 랜덤
+            if(rand() % 10 < 7) {
+                // 현재 방향이 가능한지 확인
+                int can_continue = 0;
+                for(int i = 0; i < result.count; i++) {
+                    if(result.directions[i] == ghost->direction) {
+                        can_continue = 1;
+                        break;
+                    }
+                }
+                
+                if(can_continue) {
+                    // 직진 유지
+                    // ghost->direction 그대로
+                } else {
+                    // 직진 불가능하면 랜덤 선택
+                    int rand_index = rand() % result.count;
+                    ghost->direction = result.directions[rand_index];
+                }
+            } else {
+                // 30% 확률로 랜덤 선택
+                int rand_index = rand() % result.count;
+                ghost->direction = result.directions[rand_index];
+            }
+        } else {  // count == 1 (직선 또는 코너)
+            ghost->direction = result.directions[0];
+        }
+    } else if(result.opposite_direction != DIR_NONE){
+        ghost->direction = result.opposite_direction;
+    }
+
+    // 디버그용 타겟 설정
+    int next_x = ghost->x, next_y = ghost->y;
+    getNextPosition(&next_x, &next_y, ghost->direction);
+    ghost->target_x = next_x;
+    ghost->target_y = next_y;
+
+    moveGhost(ghost);
+}
+
 void updateAllGhost(const Pacman* pacman){
+
+    if(power_mode && power_mode_timer > 0){
+        power_mode_timer--;
+        // 파워모드 시간이 감소해서 0초가 되면
+        if(power_mode_timer <= 0){
+            // 파워모드 종료
+            power_mode = 0;
+            // 겁먹은 유령을 전부 CHASING으로 다시 변경
+            for(int i = 0; i < MAX_GHOSTS; i++){
+                if(ghosts[i].state == FRIGHTENED){
+                    ghosts[i].state = CHASING;
+                }
+            }
+        }
+    }
+
     for(int i = 0; i < MAX_GHOSTS; i++){
         switch(ghosts[i].state){
             case WAITING:
-                // 대기중인 유령은 아무것도 안함
+                // 대기중인 유령은 움직이지 않음
                 break;
             case RETURNING:
-                returnToGhostZone(&ghosts[i]);
+                updateEatenGhost(&ghosts[i]);
                 break;
             case EXITING:
                 updateExitingGhost(&ghosts[i]);
-                moveGhost(&ghosts[i]);
                 break;
-
             case CHASING:
                 switch(ghosts[i].color){
                     case 'R':
@@ -635,10 +1098,9 @@ void updateAllGhost(const Pacman* pacman){
                 break;
 
             case FRIGHTENED:
+                updateFrightenedGhost(&ghosts[i]);
                 break;
 
-            case EATEN:
-                break;
         }
     }
 }
@@ -658,53 +1120,14 @@ void decideGhostDirection(Ghost* ghost, const Pacman* pacman){
     // 2. 진행 반대 방향을 제외하고 갈 수 있는 모든 방향이 막혔을 경우에 진행 반대 방향으로 변경
     // 3. 가능한 방향중 팩맨과 가장 가까워지는 최적의 방향으로 변경
 
-    int possible_directions[4] = {0, 0, 0, 0}; // UP, DOWN, LEFT, RIGHT
-    int direction_count = 0;
+    DirectionResult result = findPossilbeDirections(ghost, pacman->x, pacman->y, 1);
 
-    int direction_to_check[4] = {DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT};
-    int opposite_direction = 0;
-
-    int best_direction = 0;
-    int min_distance = INT_MAX;
-
-    switch(ghost->direction){
-        case DIR_UP: opposite_direction = DIR_DOWN; break;
-        case DIR_DOWN: opposite_direction = DIR_UP; break;
-        case DIR_LEFT: opposite_direction = DIR_RIGHT; break;
-        case DIR_RIGHT: opposite_direction = DIR_LEFT; break;
-        default: opposite_direction = DIR_NONE; break;
-    }
-
-    // 4방향 탐색
-    for(int i = 0; i < 4; i++){
-        int dir = direction_to_check[i];
-        int next_x = ghost->x;
-        int next_y = ghost->y;
-        switch(dir){
-            case DIR_UP: next_y--; break;
-            case DIR_DOWN: next_y++; break;
-            case DIR_LEFT: next_x--; break;
-            case DIR_RIGHT: next_x++; break;
-        }
-
-        if (map[next_y][next_x] != WALL && map[next_y][next_x] != GHOST_DOOR && dir != opposite_direction){
-            // possible_directions[direction_count++] = dir;
-            // 여기서 바로 pacman과의 멘해튼 거리를 계산해서 불필요한 반복 계산을 줄이자
-            // 여기서 만약 하나라도 있으면 그 방향이 최적의 방향이기 때문에 direction_count는 증가 시킬 필요가없다.
-            // 만약 여기서 하나라도 없으면 best_direction이 0이므로
-            // 이를 기반으로 반대 방향으로 갈지 판단하면 된다.
-            int distance = abs(next_x - pacman->x) + abs(next_y - pacman->y);
-            if(distance < min_distance){
-                min_distance = distance;
-                best_direction = dir;
-            }
-        }
-    }
-
-    if(best_direction != 0){
-        ghost->direction = best_direction;
+    if(result.best_direction != DIR_NONE){
+        ghost->direction = result.best_direction;
+    } else if(result.count > 0){
+        ghost->direction = result.directions[0];
     } else {
-        ghost->direction = opposite_direction;
+        ghost->direction = result.opposite_direction;
     }
 
     // if (direction_count == 0){
@@ -744,43 +1167,53 @@ void decideGhostDirectionToTarget(Ghost* ghost, int target_x, int target_y){
     // 2. 진행 반대 방향을 제외하고 갈 수 있는 모든 방향이 막혔을 경우에 진행 반대 방향으로 변경
     // 3. 가능한 방향중 팩맨 앞 4칸을 목표로해서 가장 가까워지는 최적의 방향으로 변경
 
-    int possible_directions[4] = {0, 0, 0, 0}; // UP, DOWN, LEFT, RIGHT
-    int direction_count = 0;
+    DirectionResult result = findPossilbeDirections(ghost, target_x, target_y, 1);
 
-    int direction_to_check[4] = {DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT};
-    int opposite_direction = 0;
-
-    int best_direction = 0;
-    int min_distance = INT_MAX;
-
-    switch(ghost->direction){
-        case DIR_UP: opposite_direction = DIR_DOWN; break;
-        case DIR_DOWN: opposite_direction = DIR_UP; break;
-        case DIR_LEFT: opposite_direction = DIR_RIGHT; break;
-        case DIR_RIGHT: opposite_direction = DIR_LEFT; break;
-        default: opposite_direction = DIR_NONE; break;
-    }
-
-    // 4방향 탐색
-    for(int i = 0; i < 4; i++){
-        int next_x = ghost->x;
-        int next_y = ghost->y;
-        getNextPosition(&next_x, &next_y, direction_to_check[i]);
-
-        if (map[next_y][next_x] != WALL && map[next_y][next_x] != GHOST_DOOR && direction_to_check[i] != opposite_direction){
-            int distance = abs(next_x - target_x) + abs(next_y - target_y);
-            if(distance < min_distance){
-                min_distance = distance;
-                best_direction = direction_to_check[i];
-            }
-        }
-    }
-
-    if(best_direction == 0){
-        ghost->direction = opposite_direction;
+    if(result.best_direction != DIR_NONE){
+        ghost->direction = result.best_direction;
+    } else if(result.count > 0){
+        ghost->direction = result.directions[0];
     } else {
-        ghost->direction = best_direction;
+        ghost->direction = result.opposite_direction;
     }
+
+    // int possible_directions[4] = {0, 0, 0, 0}; // UP, DOWN, LEFT, RIGHT
+    // int direction_count = 0;
+
+    // int direction_to_check[4] = {DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT};
+    // int opposite_direction = 0;
+
+    // int best_direction = 0;
+    // int min_distance = INT_MAX;
+
+    // switch(ghost->direction){
+    //     case DIR_UP: opposite_direction = DIR_DOWN; break;
+    //     case DIR_DOWN: opposite_direction = DIR_UP; break;
+    //     case DIR_LEFT: opposite_direction = DIR_RIGHT; break;
+    //     case DIR_RIGHT: opposite_direction = DIR_LEFT; break;
+    //     default: opposite_direction = DIR_NONE; break;
+    // }
+
+    // // 4방향 탐색
+    // for(int i = 0; i < 4; i++){
+    //     int next_x = ghost->x;
+    //     int next_y = ghost->y;
+    //     getNextPosition(&next_x, &next_y, direction_to_check[i]);
+
+    //     if (map[next_y][next_x] != WALL && map[next_y][next_x] != GHOST_DOOR && direction_to_check[i] != opposite_direction){
+    //         int distance = abs(next_x - target_x) + abs(next_y - target_y);
+    //         if(distance < min_distance){
+    //             min_distance = distance;
+    //             best_direction = direction_to_check[i];
+    //         }
+    //     }
+    // }
+
+    // if(best_direction == 0){
+    //     ghost->direction = opposite_direction;
+    // } else {
+    //     ghost->direction = best_direction;
+    // }
 
     // if (direction_count == 0){
     //     ghost->direction = opposite_direction;
@@ -815,14 +1248,12 @@ int canGhostMoveTo(int x, int y, GhostState state){
     int tile = map[y][x];
 
     switch(state){
+        case RETURNING:
         case EXITING:
-            return (tile != WALL);
+            return (tile != WALL && tile != WARP_ZONE);
         case CHASING:
         case FRIGHTENED:
             return (tile != WALL && tile != GHOST_DOOR);
-        case EATEN:
-            // 먹힌 상태면 모든 곳 통과
-            return 1;
         default:
             return (tile != WALL);
     }
@@ -835,6 +1266,8 @@ void moveGhost(Ghost* ghost){
     getNextPosition(&next_x, &next_y, ghost->direction);
 
     if(canGhostMoveTo(next_x, next_y, ghost->state)){
+        ghost->prev_x = ghost->x;
+        ghost->prev_y = ghost->y;
         ghost->x = next_x;
         ghost->y = next_y;
     }
@@ -871,20 +1304,13 @@ void findPacmanFuturePosition(const Pacman* pacman, int* future_x, int* future_y
     }
 }
 
-void killGhost(Ghost* ghost){
-    ghost->state = RETURNING;
-    ghost->direction = DIR_NONE;
-}
-
-void returnToGhostZone(Ghost* ghost){
-    int center_x = 13;
-    int center_y = 13;
-}
-
 // 플레이어 관련 함수들
-void updatePacman(Pacman* pacman, int* score){
+void updatePacman(Pacman* pacman, int* score, int* cookies_eaten){
     int next_x = pacman->x;
     int next_y = pacman->y;
+
+    pacman->prev_x = pacman->x;
+    pacman->prev_y = pacman->y;
 
     // 현재 방향에 따라 다음 위치 계산
     switch(pacman->direction){
@@ -904,27 +1330,30 @@ void updatePacman(Pacman* pacman, int* score){
             } else if(next_x == MAP_WIDTH - 1){ // 오른쪽 워프존
                 pacman->x = 1;
             }
-            return;
-        }
 
-        // 쿠키인지확인
-        if(map[next_y][next_x] == COOKIE){
-            // 쿠키 먹기
+        } else if(map[next_y][next_x] == COOKIE){
             map[next_y][next_x] = EMPTY;
+            (*cookies_eaten)++;
             (*score) += 10; // 점수 증가
+            pacman->x = next_x;
+            pacman->y = next_y;
+
         } else if(map[next_y][next_x] == POWER_COOKIE){
             map[next_y][next_x] = EMPTY;
+            (*cookies_eaten)++;
             (*score) += 50; // 점수 증가
-        }
+            activatePowerMode();
+            pacman->x = next_x;
+            pacman->y = next_y;
 
-        if(map[next_y][next_x] == GHOST_DOOR || map[next_y][next_x] == GHOST_ZONE){
-            // 유령문이나 유령구역은 들어갈 수 없음
-            return;
+        } else if(map[next_y][next_x] != GHOST_DOOR && map[next_y][next_x] != WALL){
+            // 일반 이동
+            pacman->x = next_x;
+            pacman->y = next_y;
         }
-
-        pacman->x = next_x;
-        pacman->y = next_y;
     }
+
+    
 }
 
 void processInput(Pacman* pacman){
@@ -973,37 +1402,85 @@ void processInput(Pacman* pacman){
     }
 }
 
+void activatePowerMode() {
+    power_mode = 1;
+    power_mode_timer = POWER_MODE_DURATION;
+
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        if(ghosts[i].state == CHASING){
+            ghosts[i].state = FRIGHTENED;
+
+            // 즉시 방향 반전 (실제 팩맨 게임처럼)
+            switch(ghosts[i].direction) {
+                case DIR_UP: ghosts[i].direction = DIR_DOWN; break;
+                case DIR_DOWN: ghosts[i].direction = DIR_UP; break;
+                case DIR_LEFT: ghosts[i].direction = DIR_RIGHT; break;
+                case DIR_RIGHT: ghosts[i].direction = DIR_LEFT; break;
+                default: break;
+            }
+        }
+    }
+}
+
+void resetGame(Pacman* pacman, int* score, int* cookies_eaten, int* ghost_released){
+    game_over = 0;
+    *score = 0;
+    game_time = 0;
+    *cookies_eaten = 0;
+    *ghost_released = 0;
+    power_mode = 0;
+    power_mode_timer = 0;
+    *pacman = (Pacman){13, 23, 13, 23, DIR_NONE, 3};
+
+
+    // 원본 맵 복원 추가해야함
+    initializeGhosts();
+}
+
 // 메인 함수
 int main() {
-    int score = 1500;
+    srand((unsigned int)time(NULL));
+    int score = 0;
     int cookies_eaten = 0;
-    int game_time = 0;
     int ghost_released = 0;
-
     initialize();
     initializeGhosts();
     
-    Pacman pacman = {13, 23, DIR_NONE, 3};
+    Pacman pacman = {13, 23, 13, 23, DIR_NONE, 3};
+    // power_mode = 1;
 
     while(1){
-        processInput(&pacman);
-        updatePacman(&pacman, &score);
-
-        if(ghost_released < MAX_GHOSTS && queue_count > 0){
-            GhostReleaseCondition conditions = release_conditions[ghost_released];
-
-            if(cookies_eaten >= conditions.cookies_required ||
-               score >= conditions.score_required ||
-               game_time >= conditions.time_required) {
-                dequeueGhost();
-                ghost_released++;
+        if(game_over){
+            if(_kbhit()){
+                int key = _getch();
+                if(key == 'r' || key == 'R'){
+                    resetGame(&pacman, &score, &cookies_eaten, &ghost_released);
+                }
+                if(key == 27){
+                    break;
+                }
             }
-        }
+        } else {
+            processInput(&pacman);
+            updatePacman(&pacman, &score, &cookies_eaten);
 
-        updateAllGhost(&pacman);
+            if(ghost_released < MAX_GHOSTS && queue_count > 0){
+                GhostReleaseCondition conditions = release_conditions[ghost_released];
+
+                if(cookies_eaten >= conditions.cookies_required ||
+                score >= conditions.score_required ||
+                game_time >= conditions.time_required) {
+                    dequeueGhost();
+                    ghost_released++;
+                }
+            }
+            updateAllGhost(&pacman);
+            handleCollisions(&pacman, &score);
+            game_time++;
+        }
         render(&pacman, score);
         flip();
-        Sleep(150); // 60FPS
+        Sleep(300); // 60FPS
     }
 
     releaseScreen();
