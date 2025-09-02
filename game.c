@@ -1,5 +1,6 @@
 // game.c
 #include "packman.h"
+#include "maps.h"
 
 // --- 전역 변수 정의 (실제 데이터) ---
 // packman.h에서 extern으로 선언했던 변수들의 실체를 여기에 정의합니다.
@@ -20,6 +21,8 @@ int power_music_active = 0;
 int ghost_back_active = 0;
 int ghost_release_timer = 0;
 int ghost_release_interval = 20;
+int ready_delay_timer = 0;
+const int READY_DELAY_TIME = 9;
 // ... (모든 전역 변수 정의)
 int debug_mode = 0;
 GameState current_state = STATE_TITLE;
@@ -29,155 +32,6 @@ GhostReleaseCondition release_conditions[] = {
     {0, 0, 600},
     {0, 0, 900}
 };
-
-// 맵 데이터
-int map_stage1[MAP_HEIGHT][MAP_WIDTH] = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,3,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,2,2,2,3,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,2,1},
-    {1,2,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,1,1,1,1,1},
-    {0,0,0,0,0,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,0,0,0,0,0},
-    {0,0,0,0,0,1,2,1,1,0,0,0,0,0,0,0,0,0,0,1,1,2,1,0,0,0,0,0},
-    {0,0,0,0,0,1,2,1,1,0,1,1,1,4,1,1,1,1,0,1,1,2,1,0,0,0,0,0},
-    {1,1,1,1,1,1,2,1,1,0,1,5,5,5,5,5,5,1,0,1,1,2,1,1,1,1,1,1},
-    {6,0,0,0,0,0,2,0,0,0,1,5,5,5,5,5,5,1,0,0,0,2,0,0,0,0,0,6},
-    {1,1,1,1,1,1,2,1,1,0,1,5,5,5,5,5,5,1,0,1,1,2,1,1,1,1,1,1},
-    {0,0,0,0,0,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,0,0,0,0,0},
-    {0,0,0,0,0,1,2,1,1,0,0,0,0,0,0,0,0,0,0,1,1,2,1,0,0,0,0,0},
-    {0,0,0,0,0,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,0,0,0,0,0},
-    {1,1,1,1,1,1,2,1,1,0,1,1,1,1,1,1,1,1,0,1,1,2,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,2,1},
-    {1,3,2,2,1,1,2,2,2,2,2,2,2,0,0,2,2,2,2,2,2,2,1,1,2,2,3,1},
-    {1,1,1,2,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,2,1,1,1},
-    {1,1,1,2,1,1,2,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1,1,2,1,1,1},
-    {1,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1},
-    {1,2,1,1,1,1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
-int map_stage2[MAP_HEIGHT][MAP_WIDTH] = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,2,2,2,1,1,2,2,2,1,1,1,2,2,2,2,1,1,1,2,2,2,1,1,2,2,2,1},
-    {1,2,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,3,2,2,2,2,2,1,2,1,1,1,2,1,1,2,1,1,1,2,1,2,2,2,2,2,3,1},
-    {1,2,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,1,1},
-    {1,1,1,1,1,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,1,1,1,1,1},
-    {1,1,1,1,1,1,2,1,2,2,2,2,2,2,2,2,2,2,2,2,1,2,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1}, // exit_path (13,11) 확보
-    {1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1}, // exit_path (13,12) 확보
-    {1,1,1,1,1,1,1,1,1,2,1,1,1,4,1,1,1,1,2,1,1,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,1,1,1,2,1,5,5,5,5,5,5,1,2,1,1,1,1,1,1,1,1,1},
-    {6,2,2,2,2,2,2,2,2,2,1,5,5,5,5,5,5,1,2,2,2,2,2,2,2,2,2,6},
-    {1,1,1,1,1,1,1,1,1,2,1,5,5,5,5,5,5,1,2,1,1,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,2,2,2,2,1,1,1,1,1,1,1,1,2,2,2,2,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,1,1,1,1,2,2,2,2,2,2,1,1,1,1,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,2,1,2,2,2,2,1,1,1,1,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,2,1,2,2,2,2,2,2,2,2,2,2,2,2,1,2,1,1,1,1,1,1},
-    {1,1,1,1,1,1,2,1,1,1,1,1,0,1,1,0,1,1,1,1,1,2,1,1,1,1,1,1},
-    {1,1,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,1,1,1,2,0,0,2,1,1,1,2,2,2,2,2,2,2,2,1}, // 팩맨 시작 위치 (13,23) 확보
-    {1,2,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,3,2,2,2,2,2,1,2,1,1,1,2,1,1,2,1,1,1,2,1,2,2,2,2,2,3,1},
-    {1,2,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,2,2,2,1,1,2,2,2,1,1,1,2,2,2,2,1,1,1,2,2,2,1,1,2,2,2,1},
-    {1,1,1,2,1,1,1,2,1,1,1,1,1,2,2,1,1,1,1,1,2,1,1,1,2,1,1,1},
-    {1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};// Stage 3: 나선형 미로
-int map_stage3[MAP_HEIGHT][MAP_WIDTH] = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,3,2,2,2,1,2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,2,1,2,2,2,3,1},
-    {1,2,1,1,2,1,2,1,1,2,1,2,1,1,1,1,2,1,2,1,1,2,1,2,1,1,2,1},
-    {1,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,2,2,2,1,1,1,1,1,1,1,1,1,1,2,2,2,1,1,1,1,2,1},
-    {1,2,2,2,2,1,2,1,1,1,2,2,2,2,2,2,2,2,1,1,1,2,1,2,2,2,2,1},
-    {1,1,1,1,2,1,2,1,2,2,2,1,1,1,1,1,1,2,2,2,1,2,1,2,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,2,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,1,2,1},
-    {1,2,2,2,2,1,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1,2,2,2,1},
-    {1,1,1,1,2,1,1,1,1,1,1,1,2,1,1,2,2,1,1,1,1,1,1,1,2,1,1,1}, // exit_path (13,11) 확보
-    {6,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,6}, // exit_path (13,12) 확보
-    {1,1,1,1,1,1,1,1,2,1,2,1,1,4,1,1,1,2,1,2,1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,1,2,2,2,1,5,5,5,5,1,2,2,2,1,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,1,2,1,2,1,5,5,5,5,1,2,1,2,1,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,1,2,2,2,1,5,5,5,5,1,2,2,2,1,0,0,0,0,0,0,1},
-    {1,1,1,1,1,1,1,1,1,1,2,1,1,1,1,1,1,2,1,1,1,1,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,2,1,1,1,1,1,2,1,1,1,1,1,1,2,1,1,1,1,2,1,1,2,1,1},
-    {1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,2,1,2,1,2,2,2,1,1,1,1,1,1,2,2,2,1,2,1,2,1,1,1,1},
-    {1,2,2,2,2,1,2,1,1,1,2,2,2,2,2,2,2,2,1,1,1,2,1,2,2,2,2,1},
-    {1,2,1,1,1,1,2,2,2,2,2,1,1,1,1,1,1,2,2,2,2,2,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,1,1,2,2,2,2,0,0,2,2,2,2,1,1,2,2,2,2,2,2,1}, // 팩맨 시작 위치 (13,23) 확보
-    {1,2,1,1,2,1,2,1,1,2,1,2,1,1,1,1,2,1,2,1,1,2,1,2,1,1,2,1},
-    {1,3,2,2,2,1,2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,2,1,2,2,2,3,1},
-    {1,2,1,1,1,1,2,1,2,2,2,2,2,1,1,2,2,2,2,2,1,2,1,1,1,1,2,1},
-    {1,2,2,2,1,1,2,2,2,1,1,1,2,2,2,2,1,1,1,2,2,2,1,1,2,2,2,1},
-    {1,1,1,2,1,1,1,2,1,1,1,1,1,2,2,1,1,1,1,1,2,1,1,1,2,1,1,1},
-    {1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1,1,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
-int map_stage4[MAP_HEIGHT][MAP_WIDTH] = {
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,3,2,2,2,1,1,2,2,2,2,2,2,1,1,2,2,2,2,2,2,1,1,2,2,2,3,1},
-    {1,2,1,1,2,1,1,2,1,1,1,1,2,1,1,2,1,1,1,1,2,1,1,2,1,1,2,1},
-    {1,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,1},
-    {1,2,1,1,1,1,1,2,2,2,2,1,1,1,1,1,1,2,2,2,2,1,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,1,2,1,1,2,2,2,2,2,2,2,2,1,1,2,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,2,1}, // exit_path (13,11) 확보
-    {1,2,2,2,2,2,2,2,2,2,2,1,1,2,1,1,1,2,2,2,2,2,2,2,2,2,2,1}, // exit_path (13,12) 확보
-    {1,0,0,1,1,2,1,1,2,1,1,1,1,4,1,1,1,1,2,1,1,2,1,1,0,0,0,1},
-    {1,1,1,1,1,2,1,1,2,1,1,5,5,5,5,5,1,1,2,1,1,2,1,1,1,1,1,1},
-    {6,2,2,2,2,2,2,2,2,1,1,5,5,5,5,5,1,1,2,2,2,2,2,2,2,2,2,6},
-    {1,1,1,1,1,1,1,1,1,2,1,5,5,5,5,5,1,1,2,1,1,2,1,1,1,1,1,1},
-    {1,0,0,1,1,2,1,1,2,1,1,1,1,1,1,1,1,1,2,1,1,2,1,1,0,0,0,1},
-    {1,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,1},
-    {1,2,1,1,1,1,1,1,2,1,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,2,2,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,1,2,1,1,2,2,2,2,2,2,2,2,1,1,2,1,1,1,1,1,1,1},
-    {1,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,2,1,1,2,1,1,1,1,1,1,1},
-    {1,2,2,2,2,2,2,2,1,1,2,2,2,0,0,2,2,2,1,1,2,2,2,2,2,2,2,1}, // 팩맨 시작 위치 (13,23) 확보
-    {1,2,1,1,1,1,1,2,2,2,2,1,1,1,1,1,1,2,2,2,2,1,1,1,1,1,2,1},
-    {1,2,1,1,2,2,2,2,1,1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,1,1,2,1},
-    {1,2,1,1,2,1,1,2,1,1,1,1,2,1,1,2,1,1,1,1,2,1,1,2,1,1,2,1},
-    {1,3,2,2,2,1,1,2,2,2,2,2,2,1,1,2,2,2,2,2,2,1,1,2,2,2,3,1},
-    {1,2,1,1,2,1,1,2,1,1,1,2,2,2,2,2,1,1,1,1,2,1,1,2,1,1,2,1},
-    {1,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1}
-};
-int current_map[MAP_HEIGHT][MAP_WIDTH];
-// ... (나머지 맵 관련 변수들)
-const int (*all_maps[])[MAP_WIDTH] = {
-    map_stage1,
-    map_stage2,
-    map_stage3,
-    map_stage4
-};
-int exit_path[][2] = {
-    // {13, 13},
-    {13, 12},
-    {13, 11}
-};
-int exit_path_length = sizeof(exit_path) / sizeof(exit_path[0]);
-int MAX_STAGES = sizeof(all_maps) / sizeof(all_maps[0]);
 
 Ghost ghosts[MAX_GHOSTS];
 Ghost* ghostQueue[MAX_GHOSTS];
@@ -237,18 +91,19 @@ void initialize() {
     hideCursor();
     restoreMap(map_stage1);
 }
+
 void resetGame(Pacman* pacman){
     current_stage = 1;
     score = 0;
     game_time = 0;
-    cookies_eaten = 0;
+    cookies_eaten = getTotalCookies() - 1;
     ghost_released = 1;
     ghost_release_timer = 0;
     power_mode = 0;
     power_mode_timer = 0;
-    *pacman = (Pacman){13, 23, 13, 23, DIR_NONE, 3};
+    
+    *pacman = (Pacman){PACMAN_SPAWN_X, PACMAN_SPAWN_Y, PACMAN_SPAWN_X, PACMAN_SPAWN_Y, DIR_NONE, 3};
 
-    current_stage = 2;
     restoreMap(map_stage1);
 
     queue_count = 0;
@@ -259,14 +114,16 @@ void resetGame(Pacman* pacman){
     is_bgm_playing = 0;
     is_first_start = 1;
     current_siren_level = 1;
+    ready_delay_timer = 0;
     total_cookies = getTotalCookies();
 }
-void nextStage(Pacman* pacman){
-    current_stage++; // 스테이지 증가
 
+void nextStage(Pacman* pacman){
     // 스테이지 클리어 보너스
     score += current_stage * 1000;
     score += pacman->lives * 300;
+
+    current_stage++; // 스테이지 증가
 
     // 스테이지 난이도 조절(더 어렵게)
     // for(int i = 0; i < MAX_GHOSTS; i++){
@@ -279,22 +136,26 @@ void nextStage(Pacman* pacman){
 
     total_cookies = getTotalCookies();
 
-    cookies_eaten = 0;
+    cookies_eaten = getTotalCookies() - 1;
     ghost_released = 1;
     ghost_release_timer = 0;
     power_mode = 0;
     power_mode_timer = 0;
+    current_siren_level = 1;
+    is_first_start = 1;
+    ready_delay_timer = 0;
 
     current_state = STATE_READY;
 
     // Pacman 초기화
-    *pacman = (Pacman){13, 23, 13, 23, DIR_NONE, pacman->lives};
+    *pacman = (Pacman){PACMAN_SPAWN_X, PACMAN_SPAWN_Y, PACMAN_SPAWN_X, PACMAN_SPAWN_Y, DIR_NONE, pacman->lives};
 
     queue_count = 0;
     queue_front = 0;
     queue_rear = 0;
     initializeGhosts();
 }
+
 void handleCollisions(Pacman* pacman, int* score){
     for(int i = 0; i < MAX_GHOSTS; i++){
         CollisionResult result = checkCollision(pacman, &ghosts[i]);
@@ -312,9 +173,9 @@ void handleCollisions(Pacman* pacman, int* score){
         }
     }
 }
+
 void handlePacmanDeath(Pacman* pacman){
     pacman->lives--;
-
     current_state = STATE_PACMAN_DEATH;
 
     // 팩맨 방향 초기화
@@ -330,6 +191,7 @@ void handlePacmanDeath(Pacman* pacman){
         }
     }
 }
+
 void handleGhostEaten(Ghost* ghost, int* score){
     static int ghost_combo = 0;
     int points = 200 * (1 << ghost_combo);
@@ -354,24 +216,11 @@ void handleGhostEaten(Ghost* ghost, int* score){
         ghost_combo = 0;
     }
 }
-void restoreMap(const int socurce_map[MAP_HEIGHT][MAP_WIDTH]){
-    memcpy(current_map, socurce_map, sizeof(current_map));
-}
-int getTotalCookies(){
-    int total = 0;
 
-    for(int y = 0; y < MAP_HEIGHT; y++){
-        for(int x = 0; x < MAP_WIDTH; x++){
-            if(current_map[y][x] == COOKIE || current_map[y][x] == POWER_COOKIE){
-                total++;
-            }
-        }
-    }
-    return total;
-}
-int isGameComplete(){
+int isLevelComplete(){
     return cookies_eaten >= total_cookies;
 }
+
 void enqueueGhost(Ghost* ghost){
     if(queue_count < MAX_GHOSTS){
 
@@ -386,27 +235,14 @@ void enqueueGhost(Ghost* ghost){
         queue_rear = (queue_rear + 1) % MAX_GHOSTS;
         queue_count++;
         ghost->state = WAITING;
-        ghost->path_index = 0;
-
-        // 현재 위치에서 가장 가까운 exit_path 인덱스 찾기
-        int best_index = 0;
-        int min_distance = abs(ghost->x - exit_path[0][0]) + abs(ghost->y - exit_path[0][1]);
-        
-        for(int i = 1; i < exit_path_length; i++){
-            int distance = abs(ghost->x - exit_path[i][0]) + abs(ghost->y - exit_path[i][1]);
-            if(distance < min_distance || (distance == min_distance && i > best_index)){
-                min_distance = distance;
-                best_index = i;
-            }
-        }
-        
-        ghost->path_index = best_index;
     }
 }
+
 Ghost* frontGhost() {
     if(queue_count > 0) return ghostQueue[queue_front];
     return NULL;
 }
+
 void dequeueGhost(){
     if(queue_count > 0){
         Ghost* ghost = ghostQueue[queue_front];
@@ -415,6 +251,7 @@ void dequeueGhost(){
         queue_count--;
     }
 }
+
 void clearGhostQueue(){
     queue_front = 0;
     queue_rear = 0;
@@ -422,6 +259,17 @@ void clearGhostQueue(){
 
     for(int i = 0; i < MAX_GHOSTS; i++){
         ghostQueue[i] = NULL;
+    }
+}
+
+void getNextPosition(int* x, int* y, Direction dir){
+    switch(dir){
+        case DIR_UP: (*y)--; break;
+        case DIR_DOWN: (*y)++; break;
+        case DIR_LEFT: (*x)--; break;
+        case DIR_RIGHT: (*x)++; break;
+        case DIR_NONE: break;
+        default: break;
     }
 }
 
@@ -465,7 +313,6 @@ CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost){
     return COLLISION_NONE;
     
 }
-
 
 // 배경 음악 및 효과음 업데이트 함수
 void updateBackGroundMusic() {
@@ -537,17 +384,34 @@ void updateBackGroundMusic() {
 void handleInput(Pacman* pacman) {
     switch(current_state) {
         case STATE_TITLE:
-            if (_kbhit()) {
-                _getch();
-                current_state = STATE_READY;
-                resetGame(pacman);
+            // 아무키나 눌렀을 때 게임 시작
+            for(int key = 0; key < 256; key++) {
+                if(GetAsyncKeyState(key) & 0x0001) {
+                    // ESC 키는 제외 (종료용)
+                    if(key != VK_ESCAPE) {
+                        current_state = STATE_READY;
+                        resetGame(pacman);
+                        break;
+                    }
+                }
+            }
+            
+            // ESC 키로 종료
+            if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
+                exit(0);
             }
             break;
 
         case STATE_READY:
+            // 딜레이 타이머 증가
+            ready_delay_timer++;
+
             // 첫 시작이 아니면 바로 게임 시작 (팩맨 사망 후)
             if(!is_first_start){
-                current_state = STATE_PLAYING;
+                if(ready_delay_timer >= READY_DELAY_TIME){
+                    ready_delay_timer = 0;
+                    current_state = STATE_PLAYING;
+                }
             }
             // 첫 시작이고 게임 시작 사운드가 끝났으면 게임 시작
             else if(is_first_start && isSoundFinished("start_game")){
@@ -561,11 +425,19 @@ void handleInput(Pacman* pacman) {
         case STATE_PLAYING:
             processInput(pacman);
             updatePacman(pacman);
+            handleCollisions(pacman, &score);
 
-            if (isGameComplete()) {
-                stopSoundMci("siren");
-                stopSoundMci("loop_sfx");
-                current_state = STATE_LEVEL_COMPLETE;
+            if (isLevelComplete()) {
+                stopAllGameSounds();
+                
+                // 마지막 스테이지 클리어 체크
+                if(current_stage >= MAX_STAGES) {
+                    // 모든 스테이지 완료 - 바로 올클리어!
+                    current_state = STATE_ALL_CLEAR;
+                } else {
+                    // 일반 스테이지 클리어
+                    current_state = STATE_LEVEL_COMPLETE;
+                }
                 break;
             }
             
@@ -601,13 +473,15 @@ void handleInput(Pacman* pacman) {
 
         case STATE_PACMAN_DEATH:
             if(isSoundFinished("pacman_dying")){
-                pacman->x = 13;
-                pacman->y = 23;
+                pacman->x = PACMAN_SPAWN_X;
+                pacman->y = PACMAN_SPAWN_Y;
                 pacman->direction = DIR_NONE;
 
                 initializeGhosts(); // 모든 유령을 초기 상태로
                 ghost_released = 1;
-
+                ghost_release_timer = 0;
+                ready_delay_timer = 0;
+                
                 if (pacman->lives <= 0) {
                     current_state = STATE_GAME_OVER;
                 } else {
@@ -617,26 +491,32 @@ void handleInput(Pacman* pacman) {
             break;
 
         case STATE_LEVEL_COMPLETE:
-            if(_kbhit()){
-                int key = _getch();
-                if(key == 'n' || key == 'N'){
-                    nextStage(pacman);
-                } else if(key == 27){
-                    current_state = STATE_TITLE;
-                }
+            if((GetAsyncKeyState('N') & 0x0001) || (GetAsyncKeyState('n') & 0x0001)){
+                // 다음 스테이지로 진행
+                nextStage(pacman);
+            } else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+                current_state = STATE_TITLE;
+                stopAllGameSounds();
             }
             break;
             
         case STATE_GAME_OVER:
-            if (_kbhit()) {
-                int key = _getch();
-                if (key == 'r' || key == 'R') {
-                    current_state = STATE_READY;
-                    resetGame(pacman);
-                }
-                else if (key == 27) {
-                    current_state = STATE_TITLE;
-                }
+            if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
+                current_state = STATE_READY;
+                resetGame(pacman);
+            }
+            else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+                current_state = STATE_TITLE;
+            }
+            break;
+
+        case STATE_ALL_CLEAR:
+            if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
+                current_state = STATE_READY;
+                resetGame(pacman);
+            }
+            else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+                current_state = STATE_TITLE;
             }
             break;
     }
@@ -654,7 +534,7 @@ void handleRender(Pacman* pacman) {
 
         case STATE_READY:
             renderGameplayScreen(pacman, score);
-            drawEntity(MAP_WIDTH/2 - 2, MAP_HEIGHT/2 + 2, "Ready!", ANSI_YELLOW);
+            drawEntity(MAP_WIDTH/2 - 1, MAP_HEIGHT/2 + 2, "Ready!", ANSI_YELLOW);
             break;
 
         case STATE_PLAYING:
@@ -671,6 +551,10 @@ void handleRender(Pacman* pacman) {
 
         case STATE_GAME_OVER:
             renderGameOver(pacman, score);
+            break;
+
+        case STATE_ALL_CLEAR:
+            renderAllClear(pacman, score);
             break;
     }
     
@@ -697,6 +581,11 @@ void handleSound() {
             break;
             
         case STATE_PLAYING:
+            if(!power_mode && current_siren_level == 1 && cookies_eaten * 2 >= total_cookies ){
+                current_siren_level = 2;
+                stopSoundMci("siren");
+                is_bgm_playing = 0;
+            }
             // siren 사운드 시작
             if(is_bgm_playing == 0){
                 if(current_siren_level == 1){
@@ -711,10 +600,7 @@ void handleSound() {
         case STATE_PACMAN_DEATH:
             // 사운드 모두 정지
             if(is_bgm_playing){
-                stopSoundMci("siren");
-                stopSoundMci("loop_sfx");
-                stopSoundMci("power_up");
-                is_bgm_playing = 0;
+                stopAllGameSounds();
             }
             // 팩맨 죽는 사운드 재생
             playSoundAndWait("sounds/pacman_dying.mp3", "pacman_dying");
@@ -723,15 +609,21 @@ void handleSound() {
         case STATE_LEVEL_COMPLETE:
             // 레벨 완료 사운드
             if(is_bgm_playing){
-                stopSoundMci("siren");
-                stopSoundMci("loop_sfx");
-                stopSoundMci("power_up");
-                is_bgm_playing = 0;
+                stopAllGameSounds();
             }
             break;
             
         case STATE_GAME_OVER:
             // 게임 오버 사운드 (필요시)
+            break;
+
+        case STATE_ALL_CLEAR:
+            // 올클리어 사운드
+            if(is_bgm_playing){
+                stopAllGameSounds();
+            }
+            // 올클리어 축하 사운드 재생
+            playSoundAndWait("sounds/pacman_gets_high_score.mp3", "all_clear");
             break;
     }
 }
@@ -740,12 +632,20 @@ void handleSound() {
 int getDelayTime() {
     switch(current_state) {
         case STATE_READY:
-            return 100;  // 사운드 체크를 위해 짧은 대기
+            return 500;  // 사운드 체크를 위해 짧은 대기
         case STATE_PACMAN_DEATH:
         case STATE_LEVEL_COMPLETE:
+        case STATE_ALL_CLEAR:
             return 1500; // 1.5초 대기
         default:
             return 250;  // 기본 대기 시간
     }
 }
 
+
+void stopAllGameSounds() {
+    stopSoundMci("siren");
+    stopSoundMci("loop_sfx");
+    stopSoundMci("power_up");
+    is_bgm_playing = 0;
+}

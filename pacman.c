@@ -1,5 +1,30 @@
 // pacman.c
 #include "packman.h"
+#include "maps.h"
+
+static int handleItemConsumption(Pacman* pacman, int next_x, int next_y){
+    if(current_map[next_y][next_x] == COOKIE){
+        current_map[next_y][next_x] = EMPTY;
+        cookies_eaten++;
+        score += 10; // 점수 증가
+
+        return 1;
+    } else if(current_map[next_y][next_x] == POWER_COOKIE){
+        current_map[next_y][next_x] = EMPTY;
+        cookies_eaten++;
+        score += 50; // 점수 증가
+        activatePowerMode();
+
+        return 1;
+    } else if(bonus_fruit.active && pacman->x == bonus_fruit.x && pacman->y == bonus_fruit.y){
+        score += bonus_fruit.score;
+        bonus_fruit.active = 0;
+        PlaySound(TEXT("sounds/eating_fruit.wav"), NULL, SND_FILENAME | SND_ASYNC);
+
+        return 1;
+    }
+    return 0;
+}
 
 void updatePacman(Pacman* pacman){
 
@@ -12,23 +37,16 @@ void updatePacman(Pacman* pacman){
     pacman->prev_y = pacman->y;
 
     // 현재 방향에 따라 다음 위치 계산
-    switch(pacman->direction){
-        case DIR_UP: next_y--; break;
-        case DIR_DOWN: next_y++; break;
-        case DIR_LEFT: next_x--; break;
-        case DIR_RIGHT: next_x++; break;
-        default: break;
+    getNextPosition(&next_x, &next_y, pacman->direction);
+
+    // 현재 좌표와 다음 좌표가 같으면 방향없이 멈춘상태
+    if(next_x == pacman->x && next_y == pacman->y){
+        // 이동하지 않음
+        return;
     }
 
     int ate_something = 0;
     int moved = 0;
-
-    if(bonus_fruit.active && pacman->x == bonus_fruit.x && pacman->y == bonus_fruit.y){
-        ate_something = 1;
-        score += bonus_fruit.score;
-        bonus_fruit.active = 0;
-        PlaySound(TEXT("sounds/eating_fruit.wav"), NULL, SND_FILENAME | SND_ASYNC);
-    }
 
     if(current_map[next_y][next_x] != WALL){
         // 워프존 확인
@@ -40,23 +58,8 @@ void updatePacman(Pacman* pacman){
                 pacman->x = 1;
                 moved = 1;
             }
-        } else if(current_map[next_y][next_x] == COOKIE){
-            current_map[next_y][next_x] = EMPTY;
-            cookies_eaten++;
-            score += 10; // 점수 증가
-
-            ate_something = 1;
-            pacman->x = next_x;
-            pacman->y = next_y;
-            moved = 1;
-
-        } else if(current_map[next_y][next_x] == POWER_COOKIE){
-            current_map[next_y][next_x] = EMPTY;
-            cookies_eaten++;
-            score += 50; // 점수 증가
-
-            ate_something = 1;
-            activatePowerMode();
+        // 아이템 처리
+        } else if(handleItemConsumption(pacman, next_x, next_y)){
             pacman->x = next_x;
             pacman->y = next_y;
             moved = 1;
@@ -78,13 +81,13 @@ void updatePacman(Pacman* pacman){
             }
         }
 
-        if(ate_something){
-            if(!power_mode && current_siren_level == 1 && cookies_eaten * 2 >= total_cookies ){
-                current_siren_level = 2;
-                stopSoundMci("siren");
-                playSoundMci("sounds/ghost_siren_lv2.wav", "siren", 1);
-            }
-        }
+        // if(ate_something){
+        //     if(!power_mode && current_siren_level == 1 && cookies_eaten * 2 >= total_cookies ){
+        //         current_siren_level = 2;
+        //         stopSoundMci("siren");
+        //         playSoundMci("sounds/ghost_siren_lv2.wav", "siren", 1);
+        //     }
+        // }
     }
 
     
@@ -95,27 +98,52 @@ void processInput(Pacman* pacman){
         debug_mode = !debug_mode;
     }
 
-    // 방향키 입력 처리 (계속 누르고 있으면 계속 이동?)
+    Direction desired_direction = DIR_NONE;
+
     if(GetAsyncKeyState(VK_UP) & 0x0001){
-        if(pacman->y - 1 >= 0 && current_map[pacman->y - 1][pacman->x] != WALL){
-            pacman->direction = DIR_UP;
+        desired_direction = DIR_UP;
+    } else if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
+        desired_direction = DIR_DOWN;
+    } else if(GetAsyncKeyState(VK_LEFT) & 0x0001) {
+        desired_direction = DIR_LEFT;
+    } else if(GetAsyncKeyState(VK_RIGHT) & 0x0001) {
+        desired_direction = DIR_RIGHT;
+    }
+
+    if(desired_direction != DIR_NONE){
+        int next_x = pacman->x;
+        int next_y = pacman->y;
+
+        getNextPosition(&next_x, &next_y, desired_direction);
+
+        if(next_x >= 0 && next_x < MAP_WIDTH && next_y >= 0 && next_y < MAP_HEIGHT
+            && current_map[next_y][next_x] != WALL){
+                pacman->direction = desired_direction;
         }
     }
-    else if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
-        if(pacman->y + 1 < MAP_HEIGHT && current_map[pacman->y + 1][pacman->x] != WALL) {
-            pacman->direction = DIR_DOWN;
-        }
-    }
-    else if(GetAsyncKeyState(VK_LEFT) & 0x0001) {
-        if(pacman->x - 1 >= 0 && current_map[pacman->y][pacman->x - 1] != WALL) {
-            pacman->direction = DIR_LEFT;
-        }
-    }
-    else if(GetAsyncKeyState(VK_RIGHT) & 0x0001) {
-        if(pacman->x + 1 < MAP_WIDTH && current_map[pacman->y][pacman->x + 1] != WALL) {
-            pacman->direction = DIR_RIGHT;
-        }
-    }
+
+
+    // // 방향키 입력 처리 (계속 누르고 있으면 계속 이동?)
+    // if(GetAsyncKeyState(VK_UP) & 0x0001){
+    //     if(pacman->y - 1 >= 0 && current_map[pacman->y - 1][pacman->x] != WALL){
+    //         pacman->direction = DIR_UP;
+    //     }
+    // }
+    // else if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
+    //     if(pacman->y + 1 < MAP_HEIGHT && current_map[pacman->y + 1][pacman->x] != WALL) {
+    //         pacman->direction = DIR_DOWN;
+    //     }
+    // }
+    // else if(GetAsyncKeyState(VK_LEFT) & 0x0001) {
+    //     if(pacman->x - 1 >= 0 && current_map[pacman->y][pacman->x - 1] != WALL) {
+    //         pacman->direction = DIR_LEFT;
+    //     }
+    // }
+    // else if(GetAsyncKeyState(VK_RIGHT) & 0x0001) {
+    //     if(pacman->x + 1 < MAP_WIDTH && current_map[pacman->y][pacman->x + 1] != WALL) {
+    //         pacman->direction = DIR_RIGHT;
+    //     }
+    // }
 
     // if(_kbhit()){
     //     int key = _getch();
@@ -192,3 +220,4 @@ void activatePowerMode() {
     
     debug_log("=== activatePowerMode end ===\n");
 }
+

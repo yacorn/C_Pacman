@@ -1,20 +1,21 @@
 // ghost.c
 #include "packman.h"
+#include "maps.h"
 #include <time.h>
 #include <limits.h>
 
 void initializeGhosts() {
     // 빨간 GHOST
-    ghosts[0] = (Ghost){13, 11, 12, 14, DIR_NONE, CHASING, 'R', 0, -1, -1};
+    ghosts[0] = (Ghost){14, 11, 13, 11, DIR_NONE, CHASING, 'R', -1, -1};
 
     // 분홍 유령
-    ghosts[1] = (Ghost){13, 14, 13, 14, DIR_NONE, WAITING, 'P', 0, -1, -1};
+    ghosts[1] = (Ghost){13, 14, 13, 14, DIR_NONE, WAITING, 'P', -1, -1};
 
     // 청록 유령
-    ghosts[2] = (Ghost){14, 14, 14, 14, DIR_NONE, WAITING, 'G', 0, -1, -1};
+    ghosts[2] = (Ghost){14, 14, 14, 14, DIR_NONE, WAITING, 'G', -1, -1};
 
     // 주황 유령
-    ghosts[3] = (Ghost){15, 14, 15, 14, DIR_NONE, WAITING, 'O', 0, -1, -1};
+    ghosts[3] = (Ghost){15, 14, 15, 14, DIR_NONE, WAITING, 'O', -1, -1};
 
     // 큐를 한번 싹다 비우고 추가
     clearGhostQueue();
@@ -231,70 +232,22 @@ void updateFrightenedGhost(Ghost* ghost){
 }
 
 void updateExitingGhost(Ghost* ghost) {
-    // 이미 출구 도달
-    if (ghost->path_index >= exit_path_length) {
+    // 고스트 도어 위치를 직접 타겟으로 설정
+    ghost->target_x = GHOST_DOOR_X;  // 14
+    ghost->target_y = GHOST_DOOR_Y - 1;  // 11
+    
+    // 고스트 도어 밖 도달 체크
+    if(ghost->x == GHOST_DOOR_X && ghost->y == GHOST_DOOR_Y - 1) {
         ghost->state = CHASING;
         ghost->target_x = -1;
         ghost->target_y = -1;
+        debug_log("Ghost %c exited to door, now CHASING\n", ghost->color);
         return;
     }
-
-    ghost->target_x = exit_path[ghost->path_index][0];
-    ghost->target_y = exit_path[ghost->path_index][1];
-
-    int target_x = exit_path[ghost->path_index][0];
-    int target_y = exit_path[ghost->path_index][1];
-
-    // 현재 목표 좌표 도달 시 path_index 증가
-    if (ghost->x == target_x && ghost->y == target_y) {
-        ghost->path_index++;
-        return;
-    }
-
-    // 다음 좌표를 향해 방향 결정
-    int next_x = ghost->x;
-    int next_y = ghost->y;
-
-    if (ghost->x < target_x) next_x++;
-    else if (ghost->x > target_x) next_x--;
-    else if (ghost->y < target_y) next_y++;
-    else if (ghost->y > target_y) next_y--;
-
-    // 이동 가능하면 방향 설정
-    if (canGhostMoveTo(next_x, next_y, ghost->state)) {
-        if (next_x > ghost->x) ghost->direction = DIR_RIGHT;
-        else if (next_x < ghost->x) ghost->direction = DIR_LEFT;
-        else if (next_y > ghost->y) ghost->direction = DIR_DOWN;
-        else if (next_y < ghost->y) ghost->direction = DIR_UP;
-    } else {
-        // 막혔을 때는 다른 방향 탐색
-        Direction directions[4] = {DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT};
-        for (int i = 0; i < 4; i++) {
-            next_x = ghost->x;
-            next_y = ghost->y;
-            switch(directions[i]) {
-                case DIR_UP: next_y--; break;
-                case DIR_DOWN: next_y++; break;
-                case DIR_LEFT: next_x--; break;
-                case DIR_RIGHT: next_x++; break;
-            }
-            if (canGhostMoveTo(next_x, next_y, ghost->state)) {
-                ghost->direction = directions[i];
-                break;
-            }
-        }
-    }
-
+    
+    // 기존 플로우 필드 시스템 사용
+    decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
     moveGhost(ghost);
-}
-
-void getNextPosition(int* x, int* y, Direction dir){
-    switch(dir){
-        case DIR_UP: (*y)--; break;
-        case DIR_DOWN: (*y)++; break;
-        case DIR_LEFT: (*x)--; break;
-        case DIR_RIGHT: (*x)++; break;
-    }
 }
 
 void decideGhostDirection(Ghost* ghost, const Pacman* pacman){

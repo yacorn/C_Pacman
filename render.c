@@ -1,5 +1,6 @@
 // render.c
 #include "packman.h"
+#include "maps.h"
 
 void hideCursor() {
     CONSOLE_CURSOR_INFO cursor_info;
@@ -71,7 +72,6 @@ void drawMapInfo() {
     drawEntity(map_x / 2, base_y + 1, buffer, INFO_COLOR);
     
     // 남은 쿠키 수 계산 (선택사항)
-    
     int remaining_power = 0;
     for(int y = 0; y < MAP_HEIGHT; y++) {
         for(int x = 0; x < MAP_WIDTH; x++) {
@@ -86,6 +86,7 @@ void drawMapInfo() {
     // sprintf(buffer, "COOKIES: %d", remaining_cookies);
     // drawEntity(map_x / 2, base_y + 2, buffer, COOKIE_COLOR);
     
+    // 파워 쿠키 남은 개수
     sprintf(buffer, "POWER: %d", remaining_power);
     drawEntity(map_x / 2, base_y + 3, buffer, POWER_COOKIE_COLOR);
 
@@ -112,7 +113,7 @@ void drawGameStateInfo() {
     
     // 파워 모드 정보
     if(power_mode) {
-        sprintf(buffer, "POWER: %d", power_mode_timer);
+        sprintf(buffer, "POWER: %d ticks", power_mode_timer);
         drawEntity(state_x / 2, base_y + 2, buffer, ANSI_RED ANSI_BLINK);
     } else {
         sprintf(buffer, "POWER: OFF");
@@ -120,15 +121,35 @@ void drawGameStateInfo() {
     }
     
     // 게임 상태
-    if(current_state == STATE_LEVEL_COMPLETE) {
-        sprintf(buffer, "STATUS: COMPLETE!");
-        drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN ANSI_BLINK);
-    } else if(current_state == STATE_GAME_OVER) {
-        sprintf(buffer, "STATUS: GAME OVER");
-        drawEntity(state_x / 2, base_y + 3, buffer, ANSI_RED ANSI_BLINK);
-    } else {
-        sprintf(buffer, "STATUS: PLAYING");
-        drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN);
+    switch(current_state) {
+        case STATE_LEVEL_COMPLETE:
+            sprintf(buffer, "STATUS: COMPLETE!");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN ANSI_BLINK);
+            break;
+        case STATE_GAME_OVER:
+            sprintf(buffer, "STATUS: GAME OVER");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_RED ANSI_BLINK);
+            break;
+        case STATE_PACMAN_DEATH:
+            sprintf(buffer, "STATUS: PACMAN DIES");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_YELLOW ANSI_BLINK);
+            break;
+        case STATE_READY:
+            sprintf(buffer, "STATUS: READY");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_YELLOW);
+            break;
+        case STATE_PLAYING:
+            sprintf(buffer, "STATUS: PLAYING");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN);
+            break;
+        case STATE_TITLE:
+            sprintf(buffer, "STATUS: TITLE");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_YELLOW);
+            break;
+        default:
+            sprintf(buffer, "STATUS: UNKNOWN");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_YELLOW);
+            break;
     }
     // 릴리즈된 고스트 수
     sprintf(buffer, "RELEASED: %d/%d", ghost_released, MAX_GHOSTS);
@@ -272,14 +293,6 @@ void drawGhostDebugInfo(){
             drawEntity(score_x / 2, base_y + 4, buffer, ANSI_BRIGHT_BLACK);
         }
         
-        // PATH INDEX (EXITING이나 RETURNING 상태일 때만)
-        if(ghosts[i].state == EXITING || ghosts[i].state == RETURNING) {
-            sprintf(buffer, "PATH: %d/%d", ghosts[i].path_index, exit_path_length);
-            drawEntity(score_x / 2, base_y + 5, buffer, ANSI_CYAN);
-        } else {
-            sprintf(buffer, "PATH: -");
-            drawEntity(score_x / 2, base_y + 5, buffer, ANSI_BRIGHT_BLACK);
-        }
     }
     
     // 큐와 파워 정보는 제거 (drawGameStateInfo로 이동)
@@ -432,17 +445,17 @@ void renderGameOver(const Pacman* pacman, int score) {
     int center_y = MAP_HEIGHT / 2;
     
     // ASCII 문자만 사용
-    drawEntity(center_x - 6, center_y - 2, "############", ANSI_BLACK);
-    drawEntity(center_x - 6, center_y - 1, "# GAME OVER #", ANSI_RED ANSI_BOLD ANSI_BLINK);
-    drawEntity(center_x - 6, center_y,     "############", ANSI_BLACK);
-    
-    drawEntity(center_x - 5, center_y + 2, "Press R to Restart", ANSI_WHITE);
-    drawEntity(center_x - 3, center_y + 3, "ESC to Quit", ANSI_WHITE);
+    drawEntity(center_x - 7, center_y - 2, "+==========================+", ANSI_BLACK);
+    drawEntity(center_x - 7, center_y - 1, "|        GAME OVER         |", ANSI_RED ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 7, center_y,     "+==========================+", ANSI_BLACK);
+
+    drawEntity(center_x - 4, center_y + 2, "Press R to Restart", ANSI_WHITE);
+    drawEntity(center_x - 2, center_y + 3, "ESC to Quit", ANSI_WHITE);
     
     // 최종 스코어
     char final_score[50];
     sprintf(final_score, "Final Score: %d", score);
-    drawEntity(center_x - 6, center_y + 5, final_score, ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 4, center_y + 5, final_score, ANSI_YELLOW ANSI_BOLD);
 }
 
 
@@ -455,20 +468,74 @@ void renderGameComplete(const Pacman* pacman, int score) {
     int center_y = MAP_HEIGHT / 2;
     
     // ASCII 문자만 사용한 배경 박스
-    drawEntity(center_x - 8, center_y - 2, "+=============================+", ANSI_WHITE ANSI_BOLD);
-    drawEntity(center_x - 8, center_y - 1, "|                             |", ANSI_WHITE ANSI_BOLD);
-    drawEntity(center_x - 8, center_y,     "|                             |", ANSI_WHITE ANSI_BOLD);
-    drawEntity(center_x - 8, center_y + 1, "|                             |", ANSI_WHITE ANSI_BOLD);
-    drawEntity(center_x - 8, center_y + 2, "+=============================+", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y - 2, "+============================+", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y - 1, "|                            |", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y,     "|                            |", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y + 1, "|                            |", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y + 2, "+============================+", ANSI_WHITE ANSI_BOLD);
 
     // ASCII 문자만 사용한 완료 메시지
     char stage_msg[50];
     sprintf(stage_msg, "*** STAGE %d COMPLETE! ***", current_stage);
-    drawEntity(center_x - 8, center_y - 1, stage_msg, ANSI_GREEN ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 6, center_y - 1, stage_msg, ANSI_GREEN ANSI_BOLD ANSI_BLINK);
     drawEntity(center_x - 6, center_y, "Press \"N\" for Next Stage", ANSI_YELLOW ANSI_BOLD);
     // drawEntity(center_x - 5, center_y, "Press R to Restart", ANSI_YELLOW ANSI_BOLD);
     drawEntity(center_x - 3, center_y + 1, "ESC to Quit", ANSI_WHITE);
 }
 
+
+void renderAllClear(const Pacman* pacman, int score){
+    // 배경을 어둡게 표시
+    for (int y = 0; y < MAP_HEIGHT; y++){
+        for(int x = 0; x < MAP_WIDTH; x++){
+            drawEntity(x, y, "#", ANSI_BRIGHT_BLACK);
+        }
+    }
+    
+    // 올클리어 메시지 박스
+    int center_x = MAP_WIDTH / 2;
+    int center_y = MAP_HEIGHT / 2;
+    
+    // 큰 축하 박스 (ASCII 아트 스타일)
+    drawEntity(center_x - 12, center_y - 6, "+===========================================+", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 12, center_y - 5, "|                                           |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 12, center_y - 4, "|    ★★★  ALL STAGES CLEARED!  ★★★          |", ANSI_GREEN ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 12, center_y - 3, "|                                           |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 12, center_y - 2, "|             CONGRATULATIONS!              |", ANSI_CYAN ANSI_BOLD);
+    drawEntity(center_x - 12, center_y - 1, "|                                           |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 12, center_y,     "|         You are the PACMAN MASTER!        |", ANSI_MAGENTA ANSI_BOLD);
+    drawEntity(center_x - 12, center_y + 1, "|                                           |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 12, center_y + 2, "+===========================================+", ANSI_YELLOW ANSI_BOLD);
+    
+    // 최종 스코어와 통계
+    char final_score[50];
+    sprintf(final_score, "Final Score: %d", score);
+    drawEntity(center_x - 5, center_y + 4, final_score, ANSI_WHITE ANSI_BOLD);
+    
+    char stages_completed[50];
+    sprintf(stages_completed, "Stages Completed: %d", current_stage - 1);
+    drawEntity(center_x - 6, center_y + 5, stages_completed, ANSI_GREEN);
+    
+    // 보너스 점수 계산 (예시)
+    int bonus_score = pacman->lives * 1000;
+    char bonus_text[50];
+    sprintf(bonus_text, "Lives Bonus: %d x 1000 = %d", pacman->lives, bonus_score);
+    drawEntity(center_x - 8, center_y + 6, bonus_text, ANSI_YELLOW);
+    
+    // 총합 점수
+    char total_score[50];
+    sprintf(total_score, "Total Score: %d", score + bonus_score);
+    drawEntity(center_x - 5, center_y + 7, total_score, ANSI_RED ANSI_BOLD);
+    
+    // 조작 안내
+    drawEntity(center_x - 7, center_y + 9, "Press \"R\" to Play Again", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 5, center_y + 10, "Press ESC to Exit", ANSI_WHITE);
+    
+    // 추가 축하 메시지들 (깜빡이는 효과)
+    drawEntity(center_x - 7, center_y + 12, "★ PERFECT GAME CLEAR! ★", ANSI_RAINBOW ANSI_BLINK);
+    
+    // 사이드에 스코어 정보도 표시
+    drawScore(score, pacman->lives);
+}
 // ... 이 외 render.c에 속하기로 한 모든 함수의 구현 ...
 // renderGameplayScreen, renderGameOver, renderDebugInfo 등

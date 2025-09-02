@@ -26,6 +26,7 @@
 #define ANSI_MAGENTA   "\033[35m"
 #define ANSI_CYAN      "\033[36m"
 #define ANSI_WHITE     "\033[37m"
+#define ANSI_RAINBOW   "\033[38;5;196m"
 
 // ANSI 밝은 텍스트 색상
 #define ANSI_BRIGHT_BLACK   "\033[90m"
