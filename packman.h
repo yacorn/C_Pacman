@@ -28,9 +28,12 @@
 #define MAP_HEIGHT 31
 
 // --- 자료 구조 정의 ---
-typedef enum { STATE_TITLE, STATE_READY, STATE_PLAYING, STATE_PACMAN_DEATH, STATE_LEVEL_COMPLETE, STATE_GAME_OVER, STATE_CUTSCENE, STATE_ALL_CLEAR } GameState;
+typedef enum { STATE_TITLE, STATE_HELP, STATE_READY, STATE_PLAYING, STATE_PACMAN_DEATH, STATE_LEVEL_COMPLETE, STATE_GAME_OVER, STATE_CUTSCENE, STATE_ALL_CLEAR } GameState;
 typedef enum { DIR_NONE = 0, DIR_UP, DIR_DOWN, DIR_LEFT, DIR_RIGHT } Direction;
 typedef enum { COLLISION_NONE = 0, COLLISION_PACMAN_DIES, COLLISION_GHOST_EATEN, COLLISION_IGNORED } CollisionResult;
+
+// 타이틀 메뉴 관련
+typedef enum { MENU_START_GAME = 0, MENU_HOW_TO_PLAY, MENU_EXIT_GAME, MENU_COUNT } MenuOption;
 
 typedef struct {
     int x, y, prev_x, prev_y;
@@ -89,6 +92,9 @@ extern int queue_front, queue_rear, queue_count;
 extern int power_music_active;
 extern int ghost_back_active;
 
+// 타이틀 메뉴 관련 변수
+extern MenuOption current_menu_selection;
+
 extern Ghost ghosts[MAX_GHOSTS];
 extern Ghost* ghostQueue[MAX_GHOSTS];
 extern GameState current_state;
@@ -112,6 +118,8 @@ void enqueueGhost(Ghost* ghost);
 Ghost* frontGhost();
 void dequeueGhost();
 void clearGhostQueue();
+void spawnBonusFruit(const Pacman* pacman);
+void updateBonusFruit();
 void updateBackGroundMusic();
 void handleInput(Pacman* pacman);
 void handleRender(Pacman* pacman);
@@ -137,6 +145,8 @@ void drawEntity(int x, int y, const char* str, const char* color);
 void drawScore(int score, int lives);
 void drawGhostDebugInfo();
 void drawPacmanDebugInfo(const Pacman* pacman);
+void renderTitleScreen();
+void renderHelpScreen();
 void drawGameStateInfo();
 void drawMapInfo();
 

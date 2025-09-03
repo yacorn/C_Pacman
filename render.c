@@ -537,5 +537,80 @@ void renderAllClear(const Pacman* pacman, int score){
     // 사이드에 스코어 정보도 표시
     drawScore(score, pacman->lives);
 }
+
+// 타이틀 화면 렌더링
+void renderTitleScreen() {
+    int center_x = MAP_WIDTH / 2;
+    int center_y = MAP_HEIGHT / 2;
+    
+    // 게임 제목 (ASCII 아트 스타일)
+    drawEntity(center_x - 8, center_y - 8, "########    #######     #######   #######    ####     ####", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 8, center_y - 7, "##     ##   ##    ##   ##     ##  ##    ##   ## ##   ##  ##", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 8, center_y - 6, "########    #######    ##         #######    ##  ## ##   ##", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 8, center_y - 5, "##          ##    ##   ##     ##  ##    ##   ##   ###    ##", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 8, center_y - 4, "##          ##     ##   #######   ##     ##  ##    #     ##", ANSI_YELLOW ANSI_BOLD);
+    
+    // 메뉴 옵션들
+    char* menu_texts[MENU_COUNT] = {"Game Start", "How to Play", "Exit Game"};
+    char* menu_colors[MENU_COUNT] = {ANSI_WHITE, ANSI_WHITE, ANSI_WHITE};
+    
+    for(int i = 0; i < MENU_COUNT; i++) {
+        if(i == current_menu_selection) {
+            // 선택된 메뉴는 하이라이트
+            drawEntity(center_x - 2, center_y + 1 + i, "> ", ANSI_GREEN ANSI_BOLD);
+            drawEntity(center_x, center_y + 1 + i, menu_texts[i], ANSI_GREEN ANSI_BOLD);
+        } else {
+            drawEntity(center_x - 2, center_y + 1 + i, "  ", ANSI_WHITE);
+            drawEntity(center_x, center_y + 1 + i, menu_texts[i], ANSI_WHITE);
+        }
+    }
+    
+    // 조작 안내
+    drawEntity(center_x - 8, center_y + 6, "UP/DOWN : Navigate  Enter : Select  ESC : Exit", ANSI_CYAN);
+    
+    // 팩맨 캐릭터 표시 (장식용)
+    drawEntity(center_x - 12, center_y - 2, "O", PACMAN_COLOR);
+    drawEntity(center_x + 10, center_y - 2, "O", GHOST_RED_COLOR);
+    drawEntity(center_x + 11, center_y - 2, "O", GHOST_PINK_COLOR);
+    drawEntity(center_x + 12, center_y - 2, "O", GHOST_GREEN_COLOR);
+    drawEntity(center_x + 13, center_y - 2, "O", GHOST_ORANGE_COLOR);
+}
+
+// 도움말 화면 렌더링
+void renderHelpScreen() {
+    int center_x = MAP_WIDTH / 2;
+    int start_y = 3;
+    
+    // 제목
+    drawEntity(center_x - 4, start_y, "HOW TO PLAY", ANSI_YELLOW ANSI_BOLD);
+    
+    // 게임 설명
+    drawEntity(2, start_y + 3, "OBJECTIVE:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 4, "- Eat all cookies to proceed to next stage", ANSI_WHITE);
+    drawEntity(4, start_y + 5, "- Avoid ghosts or eat them with power cookies", ANSI_WHITE);
+    
+    drawEntity(2, start_y + 7, "CONTROLS:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 8, "- Arrow Keys: Move Pacman", ANSI_WHITE);
+    drawEntity(4, start_y + 9, "- ESC: Exit Game", ANSI_WHITE);
+    
+    drawEntity(2, start_y + 11, "GAME ELEMENTS:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 12, "O Pacman (You)", PACMAN_COLOR);
+    drawEntity(4, start_y + 13, ". Cookie (10 points)", ANSI_YELLOW);
+    drawEntity(4, start_y + 14, "O Power Cookie (50 points, weakens ghosts)", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(4, start_y + 15, "O Red Ghost (Chaser)", GHOST_RED_COLOR);
+    drawEntity(4, start_y + 16, "O Pink Ghost (Ambusher)", GHOST_PINK_COLOR);
+    drawEntity(4, start_y + 17, "O Green Ghost (Random)", GHOST_GREEN_COLOR);
+    drawEntity(4, start_y + 18, "O Orange Ghost (Patrol)", GHOST_ORANGE_COLOR);
+    
+    drawEntity(2, start_y + 20, "SCORING:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 21, "- Cookie: 10 points", ANSI_WHITE);
+    drawEntity(4, start_y + 22, "- Power Cookie: 50 points", ANSI_WHITE);
+    drawEntity(4, start_y + 23, "- Ghost: 200 points", ANSI_WHITE);
+    drawEntity(4, start_y + 24, "- Bonus Fruit: 100 points", ANSI_WHITE);
+    
+    // 돌아가기 안내
+    drawEntity(center_x - 6, start_y + 27, "Press any ESC or SPACE to go back", ANSI_CYAN ANSI_BOLD);
+}
+
 // ... 이 외 render.c에 속하기로 한 모든 함수의 구현 ...
 // renderGameplayScreen, renderGameOver, renderDebugInfo 등

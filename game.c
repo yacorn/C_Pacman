@@ -1,6 +1,8 @@
 // game.c
 #include "packman.h"
 #include "maps.h"
+#include <time.h>
+#include <stdlib.h>
 
 // --- 전역 변수 정의 (실제 데이터) ---
 // packman.h에서 extern으로 선언했던 변수들의 실체를 여기에 정의합니다.
@@ -26,6 +28,7 @@ const int READY_DELAY_TIME = 9;
 // ... (모든 전역 변수 정의)
 int debug_mode = 0;
 GameState current_state = STATE_TITLE;
+MenuOption current_menu_selection = MENU_START_GAME;  // 메뉴 선택 초기화
 GhostReleaseCondition release_conditions[] = {
     {0, 0, 0},
     {0, 0, 300},
@@ -90,17 +93,24 @@ void initialize() {
 
     hideCursor();
     restoreMap(map_stage1);
+    
+    // 랜덤 시드 초기화
+    srand((unsigned int)time(NULL));
 }
 
 void resetGame(Pacman* pacman){
     current_stage = 1;
     score = 0;
     game_time = 0;
-    cookies_eaten = getTotalCookies() - 1;
+    cookies_eaten = 0;
     ghost_released = 1;
     ghost_release_timer = 0;
     power_mode = 0;
     power_mode_timer = 0;
+    
+    // 보너스 과일 초기화
+    bonus_fruit.active = 0;
+    bonus_fruit.timer = 0;
     
     *pacman = (Pacman){PACMAN_SPAWN_X, PACMAN_SPAWN_Y, PACMAN_SPAWN_X, PACMAN_SPAWN_Y, DIR_NONE, 3};
 
@@ -136,7 +146,7 @@ void nextStage(Pacman* pacman){
 
     total_cookies = getTotalCookies();
 
-    cookies_eaten = getTotalCookies() - 1;
+    cookies_eaten = 0;
     ghost_released = 1;
     ghost_release_timer = 0;
     power_mode = 0;
@@ -144,6 +154,10 @@ void nextStage(Pacman* pacman){
     current_siren_level = 1;
     is_first_start = 1;
     ready_delay_timer = 0;
+
+    // 보너스 과일 초기화
+    bonus_fruit.active = 0;
+    bonus_fruit.timer = 0;
 
     current_state = STATE_READY;
 
@@ -384,21 +398,49 @@ void updateBackGroundMusic() {
 void handleInput(Pacman* pacman) {
     switch(current_state) {
         case STATE_TITLE:
-            // 아무키나 눌렀을 때 게임 시작
-            for(int key = 0; key < 256; key++) {
-                if(GetAsyncKeyState(key) & 0x0001) {
-                    // ESC 키는 제외 (종료용)
-                    if(key != VK_ESCAPE) {
+            // 메뉴 내비게이션
+            if(GetAsyncKeyState(VK_UP) & 0x0001) {
+                current_menu_selection = (current_menu_selection - 1 + MENU_COUNT) % MENU_COUNT;
+            }
+            if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
+                current_menu_selection = (current_menu_selection + 1) % MENU_COUNT;
+            }
+            
+            // 엔터 키로 선택 확정
+            if(GetAsyncKeyState(VK_RETURN) & 0x0001) {
+                switch(current_menu_selection) {
+                    case MENU_START_GAME:
                         current_state = STATE_READY;
                         resetGame(pacman);
                         break;
-                    }
+                    case MENU_HOW_TO_PLAY:
+                        current_state = STATE_HELP;
+                        break;
+                    case MENU_EXIT_GAME:
+                        exit(0);
+                        break;
                 }
             }
             
             // ESC 키로 종료
             if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
                 exit(0);
+            }
+            break;
+
+        case STATE_HELP:
+            // ESC나 아무 키나 눌러서 타이틀로 돌아가기
+            static int enter_released = 0;
+
+            if(!(GetAsyncKeyState(VK_RETURN) & 0x8000)){
+                enter_released = 1;
+            }
+
+            if(enter_released){
+                if((GetAsyncKeyState(VK_ESCAPE) & 0x0001) || (GetAsyncKeyState(VK_SPACE) & 0x0001)) {
+                    current_state = STATE_TITLE;
+                    enter_released = 0;
+                }
             }
             break;
 
@@ -441,19 +483,19 @@ void handleInput(Pacman* pacman) {
                 break;
             }
             
-            if (!bonus_fruit.active && cookies_eaten == 70){
-                bonus_fruit.active = 1;
-                bonus_fruit.x = 13;
-                bonus_fruit.y = 17;
-                bonus_fruit.timer = 300;
-            }
-
-            if (bonus_fruit.active){
-                bonus_fruit.timer--;
-                if (bonus_fruit.timer <= 0){
-                    bonus_fruit.active = 0;
+            // 보너스 과일 생성 조건 (더 다양한 조건으로 확장)
+            if (!bonus_fruit.active) {
+                // 조건 1: 쿠키를 70개 먹었을 때
+                // 조건 2: 쿠키의 절반을 먹었을 때 
+                // 조건 3: 10초마다 랜덤하게 (낮은 확률)
+                if (cookies_eaten == 70 || 
+                    (cookies_eaten == total_cookies / 2) ||
+                    (game_time > 60 && game_time % 180 == 0 && (rand() % 100) < 30)) { // 10초마다 30% 확률
+                    spawnBonusFruit(pacman);
                 }
             }
+
+            updateBonusFruit();
             
             if(ghost_released < MAX_GHOSTS){
                 ghost_release_timer++;
@@ -491,23 +533,38 @@ void handleInput(Pacman* pacman) {
             break;
 
         case STATE_LEVEL_COMPLETE:
-            if((GetAsyncKeyState('N') & 0x0001) || (GetAsyncKeyState('n') & 0x0001)){
-                // 다음 스테이지로 진행
-                nextStage(pacman);
-            } else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                current_state = STATE_TITLE;
-                stopAllGameSounds();
+            static int game_complete_delay = 0;
+            game_complete_delay++;
+            
+            if(game_complete_delay > 1){
+                if((GetAsyncKeyState('N') & 0x0001) || (GetAsyncKeyState('n') & 0x0001)){
+                    // 다음 스테이지로 진행
+                    nextStage(pacman);
+                    game_complete_delay = 0;
+                } else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+                    current_state = STATE_TITLE;
+                    stopAllGameSounds();
+                    game_complete_delay = 0;
+                }
             }
             break;
             
         case STATE_GAME_OVER:
-            if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
-                current_state = STATE_READY;
-                resetGame(pacman);
+            static int game_over_delay = 0;
+            game_over_delay++;
+
+            if(game_over_delay > 1){
+                if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
+                    current_state = STATE_READY;
+                    resetGame(pacman);
+                    game_over_delay = 0;
+                }
+                else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+                    current_state = STATE_TITLE;
+                    game_over_delay = 0;
+                }
             }
-            else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                current_state = STATE_TITLE;
-            }
+            
             break;
 
         case STATE_ALL_CLEAR:
@@ -528,8 +585,11 @@ void handleRender(Pacman* pacman) {
     
     switch(current_state) {
         case STATE_TITLE:
-            drawEntity(MAP_WIDTH/2 - 5, MAP_HEIGHT/2, "PACKMAN", PACMAN_COLOR);
-            drawEntity(MAP_WIDTH/2 - 8, MAP_HEIGHT/2 + 2, "Press Any Key...", ANSI_WHITE);
+            renderTitleScreen();
+            break;
+
+        case STATE_HELP:
+            renderHelpScreen();
             break;
 
         case STATE_READY:
@@ -648,4 +708,92 @@ void stopAllGameSounds() {
     stopSoundMci("loop_sfx");
     stopSoundMci("power_up");
     is_bgm_playing = 0;
+}
+
+// 보너스 과일 생성 함수
+void spawnBonusFruit(const Pacman* pacman) {
+    if (bonus_fruit.active) {
+        return; // 이미 활성화된 과일이 있으면 생성하지 않음
+    }
+    
+    // 빈 공간을 찾기 위한 시도 횟수 제한
+    int max_attempts = 100;
+    int attempts = 0;
+    
+    while (attempts < max_attempts) {
+        // 맵 범위 내에서 랜덤 위치 생성
+        int random_x = (rand() % (MAP_WIDTH - 2)) + 1;   // 벽을 피하기 위해 1~MAP_WIDTH-2
+        int random_y = (rand() % (MAP_HEIGHT - 2)) + 1;  // 벽을 피하기 위해 1~MAP_HEIGHT-2
+        
+        // 해당 위치가 빈 공간이거나 쿠키가 있는 곳인지 확인
+        int tile = current_map[random_y][random_x];
+        if (tile == EMPTY || tile == COOKIE || tile == POWER_COOKIE) {
+            // 팩맨이나 유령이 있는 위치는 피하기
+            int position_occupied = 0;
+            
+            // 팩맨 위치 체크
+            if (pacman && pacman->x == random_x && pacman->y == random_y) {
+                position_occupied = 1;
+            }
+            
+            // 유령 위치 체크
+            if (!position_occupied) {
+                for (int i = 0; i < MAX_GHOSTS; i++) {
+                    if (ghosts[i].x == random_x && ghosts[i].y == random_y) {
+                        position_occupied = 1;
+                        break;
+                    }
+                }
+            }
+            
+            if (!position_occupied) {
+                // 과일 생성 (랜덤 지속시간: 8~12초)
+                bonus_fruit.active = 1;
+                bonus_fruit.x = random_x;
+                bonus_fruit.y = random_y;
+                bonus_fruit.timer = 32 + (rand() % 17); // 8~12초 (32~48 프레임)
+                
+                // 만약 쿠키가 있던 자리에 과일이 생성되었다면 쿠키를 제거하고 총 쿠키 수 재계산
+                if (tile == COOKIE || tile == POWER_COOKIE) {
+                    current_map[random_y][random_x] = EMPTY;
+                    total_cookies = getTotalCookies(); // 쿠키 개수 재계산
+                }
+                
+                debug_log("Bonus fruit spawned at (%d, %d), total_cookies: %d\n", 
+                         random_x, random_y, total_cookies);
+                break;
+            }
+        }
+        attempts++;
+    }
+    
+    // 적절한 위치를 찾지 못했을 경우 기본 위치에 생성
+    if (attempts >= max_attempts) {
+        bonus_fruit.active = 1;
+        bonus_fruit.x = 13;  // 기본 위치
+        bonus_fruit.y = 17;
+        bonus_fruit.timer = 32 + (rand() % 17); // 8~12초 (32~48 프레임)
+        
+        // 기본 위치에 쿠키가 있다면 제거하고 재계산
+        int tile = current_map[17][13];
+        if (tile == COOKIE || tile == POWER_COOKIE) {
+            current_map[17][13] = EMPTY;
+            total_cookies = getTotalCookies();
+        }
+        
+        debug_log("Bonus fruit spawned at default position (13, 17)\n");
+    }
+}
+
+// 보너스 과일 업데이트 함수
+void updateBonusFruit() {
+    if (!bonus_fruit.active) {
+        return;
+    }
+    
+    bonus_fruit.timer--;
+    if (bonus_fruit.timer <= 0) {
+        bonus_fruit.active = 0;
+        debug_log("Bonus fruit disappeared\n");
+    }
 }
