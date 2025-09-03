@@ -1,18 +1,19 @@
 // pacman.c
-#include "packman.h"
+#include "game.h"
 #include "maps.h"
+#include "sound.h"
 
 static int handleItemConsumption(Pacman* pacman, int next_x, int next_y){
     if(current_map[next_y][next_x] == COOKIE){
         current_map[next_y][next_x] = EMPTY;
         cookies_eaten++;
-        score += 10; // 점수 증가
+        score += SCORE_COOKIE; // 점수 증가
 
         return 1;
     } else if(current_map[next_y][next_x] == POWER_COOKIE){
         current_map[next_y][next_x] = EMPTY;
         cookies_eaten++;
-        score += 50; // 점수 증가
+        score += SCORE_POWER_COOKIE; // 점수 증가
         activatePowerMode();
 
         return 1;

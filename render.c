@@ -1,6 +1,8 @@
 // render.c
-#include "packman.h"
 #include "maps.h"
+#include "game.h"
+#include "render.h"
+#include "sound.h"
 
 void hideCursor() {
     CONSOLE_CURSOR_INFO cursor_info;
@@ -113,7 +115,7 @@ void drawGameStateInfo() {
     
     // 파워 모드 정보
     if(power_mode) {
-        sprintf(buffer, "POWER: %d ticks", power_mode_timer);
+        sprintf(buffer, "POWER: %.1f ticks", power_mode_timer);
         drawEntity(state_x / 2, base_y + 2, buffer, ANSI_RED ANSI_BLINK);
     } else {
         sprintf(buffer, "POWER: OFF");
@@ -183,8 +185,8 @@ void drawPacmanDebugInfo(const Pacman* pacman) {
     drawEntity(pacman_x / 2, base_y + 3, buffer, ANSI_RED ANSI_BOLD);
     
     // 현재 타일 정보
-    const char* tile_names[] = {"EMPTY", "WALL", "COOKIE", "POWER", "DOOR", "ZONE", "WARP"};
-    int tile_type = (current_map[pacman->y][pacman->x] >= 0 && current_map[pacman->y][pacman->x] <= 6) ? 
+    const char* tile_names[] = {"EMPTY", "WALL", "COOKIE", "POWER", "DOOR", "ZONE", "WARP", "VOID"};
+    int tile_type = (current_map[pacman->y][pacman->x] >= 0 && current_map[pacman->y][pacman->x] <= 7) ? 
                     current_map[pacman->y][pacman->x] : 0;
     sprintf(buffer, "TILE: %s", tile_names[tile_type]);
     drawEntity(pacman_x / 2, base_y + 4, buffer, ANSI_YELLOW);
@@ -316,6 +318,14 @@ void drawScore(int score, int lives){
     sprintf(lives_str, "%d", lives);
     drawEntity(score_x / 2, 6, lives_str, INFO_COLOR);
 
+    // FPS 표시 (debug 모드일 때만)
+    if (debug_mode) {
+        drawEntity(score_x / 2, 8, "FPS ", ANSI_WHITE ANSI_BOLD);
+        
+        char fps_str[20];
+        sprintf(fps_str, "%d", getCurrentFPS());
+        drawEntity(score_x / 2 + 2 , 8, fps_str, ANSI_WHITE ANSI_BOLD);
+    }
 }
 
 
@@ -349,6 +359,7 @@ void renderMapTile(int tile, int x, int y) {
         case GHOST_DOOR: drawEntity(x, y, "─", ANSI_WHITE); break;
         case GHOST_ZONE: drawEntity(x, y, " ", GHOST_ZONE_COLOR); break;
         case WARP_ZONE: drawEntity(x, y, "W", SUCCESS_COLOR); break;
+        case VOID_ZONE: drawEntity(x, y, " ", ANSI_BLACK); break;
     }
 }
 
@@ -381,6 +392,17 @@ void renderGhost(const Ghost* ghost, int x, int y) {
         drawEntity(x, y, ghost_str, colors[color_index]);
     }
             
+}
+
+
+void renderFruit(FruitTypes type, int x, int y){
+    switch(type){
+        case FRUIT_CHERRY: drawEntity(x, y, "@", FRUIT_CHERRY_COLOR); break;
+        case FRUIT_STRAWBERRY: drawEntity(x, y, "@", FRUIT_STRAWBERRY_COLOR); break;
+        case FRUIT_ORANGE: drawEntity(x, y, "@", FRUIT_ORANGE_COLOR); break;
+        case FRUIT_APPLE: drawEntity(x, y, "@", FRUIT_APPLE_COLOR); break;
+        case FRUIT_MELON: drawEntity(x, y, "@", FRUIT_MELON_COLOR); break;
+    }
 }
 
 
@@ -420,7 +442,7 @@ void renderGameplayScreen(const Pacman* pacman, int score){
                     drawEntity(x, y, "C", PACMAN_COLOR);
                 }
             } else if(bonus_fruit.active && x == bonus_fruit.x && y == bonus_fruit.y){
-                drawEntity(x, y, "@", FRUIT_COLOR);
+                renderFruit(bonus_fruit.type, x, y);
             } else if(is_ghost_here){
                 renderGhost(current_ghost, x, y);
             } else if(is_target_here){
@@ -517,7 +539,7 @@ void renderAllClear(const Pacman* pacman, int score){
     drawEntity(center_x - 6, center_y + 5, stages_completed, ANSI_GREEN);
     
     // 보너스 점수 계산 (예시)
-    int bonus_score = pacman->lives * 1000;
+    int bonus_score = pacman->lives * SCORE_LEFT_LIFE_BONUS;
     char bonus_text[50];
     sprintf(bonus_text, "Lives Bonus: %d x 1000 = %d", pacman->lives, bonus_score);
     drawEntity(center_x - 8, center_y + 6, bonus_text, ANSI_YELLOW);

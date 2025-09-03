@@ -1,21 +1,23 @@
 // ghost.c
-#include "packman.h"
+#include "ghost.h"
+#include "game.h"
 #include "maps.h"
+#include "sound.h"
 #include <time.h>
 #include <limits.h>
 
 void initializeGhosts() {
     // 빨간 GHOST
-    ghosts[0] = (Ghost){14, 11, 13, 11, DIR_NONE, CHASING, 'R', -1, -1};
+    ghosts[0] = (Ghost){RED_GHOST_SPAWN_X, RED_GHOST_SPAWN_Y - 4, RED_GHOST_SPAWN_X, RED_GHOST_SPAWN_Y, DIR_NONE, CHASING, 'R', -1, -1};
 
     // 분홍 유령
-    ghosts[1] = (Ghost){13, 14, 13, 14, DIR_NONE, WAITING, 'P', -1, -1};
+    ghosts[1] = (Ghost){PINK_GHOST_SPAWN_X, PINK_GHOST_SPAWN_Y, PINK_GHOST_SPAWN_X, PINK_GHOST_SPAWN_Y, DIR_NONE, WAITING, 'P', -1, -1};
 
     // 청록 유령
-    ghosts[2] = (Ghost){14, 14, 14, 14, DIR_NONE, WAITING, 'G', -1, -1};
+    ghosts[2] = (Ghost){GREEN_GHOST_SPAWN_X, GREEN_GHOST_SPAWN_Y, GREEN_GHOST_SPAWN_X, GREEN_GHOST_SPAWN_Y, DIR_NONE, WAITING, 'G', -1, -1};
 
     // 주황 유령
-    ghosts[3] = (Ghost){15, 14, 15, 14, DIR_NONE, WAITING, 'O', -1, -1};
+    ghosts[3] = (Ghost){ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, DIR_NONE, WAITING, 'O', -1, -1};
 
     // 큐를 한번 싹다 비우고 추가
     clearGhostQueue();
@@ -26,27 +28,6 @@ void initializeGhosts() {
 }
 
 void updateAllGhost(const Pacman* pacman){
-
-    if(power_mode && power_mode_timer > 0){
-        power_mode_timer--;
-        // 파워모드 시간이 감소해서 0초가 되면
-        if(power_mode_timer <= 0){
-            // 파워모드 종료
-            power_mode = 0;
-
-            stopSoundMci("power_up");
-
-            is_bgm_playing = 0;
-
-            // 겁먹은 유령을 전부 CHASING으로 다시 변경
-            for(int i = 0; i < MAX_GHOSTS; i++){
-                if(ghosts[i].state == FRIGHTENED){
-                    ghosts[i].state = CHASING;
-                }
-            }
-        }
-    }
-
     for(int i = 0; i < MAX_GHOSTS; i++){
         switch(ghosts[i].state){
             case WAITING:
@@ -96,7 +77,7 @@ void updatePinkGhost(Ghost* ghost, const Pacman* pacman){
     int target_x = pacman->x;
     int target_y = pacman->y;
 
-    findPacmanFuturePosition(pacman, &target_x, &target_y, 4);
+    findPacmanFuturePosition(pacman, &target_x, &target_y, PINK_GHOST_LOOK_AHEAD);
 
     ghost->target_x = target_x;
     ghost->target_y = target_y;
@@ -161,15 +142,35 @@ void updateOrangeGhost(Ghost* ghost, const Pacman* pacman){
 }
 
 void updateEatenGhost(Ghost* ghost){
-    ghost->target_x = GHOST_ZONE_X;
-    ghost->target_y = GHOST_ZONE_Y;
+    // 각 고스트의 색깔에 따라 스폰 위치를 타겟으로 설정
+    switch(ghost->color){
+        case 'R':
+            ghost->target_x = RED_GHOST_SPAWN_X;
+            ghost->target_y = RED_GHOST_SPAWN_Y;
+            break;
+        case 'P':
+            ghost->target_x = PINK_GHOST_SPAWN_X;
+            ghost->target_y = PINK_GHOST_SPAWN_Y;
+            break;
+        case 'G':
+            ghost->target_x = GREEN_GHOST_SPAWN_X;
+            ghost->target_y = GREEN_GHOST_SPAWN_Y;
+            break;
+        case 'O':
+            ghost->target_x = ORANGE_GHOST_SPAWN_X;
+            ghost->target_y = ORANGE_GHOST_SPAWN_Y;
+            break;
+        default:
+            ghost->target_x = GHOST_ZONE_X;
+            ghost->target_y = GHOST_ZONE_Y;
+            break;
+    }
 
     decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
     moveGhost(ghost);
 
-    if(ghost->x == GHOST_ZONE_X && ghost->y == GHOST_ZONE_Y){
-        ghost->state = WAITING;
-        ghost->direction = DIR_NONE;
+    // 각 고스트가 자신의 스폰 위치에 도달했는지 확인
+    if(ghost->x == ghost->target_x && ghost->y == ghost->target_y){
 
         // 유령이 돌아가는 소리를 멈춘다
         stopSoundMci("loop_sfx");
@@ -239,8 +240,6 @@ void updateExitingGhost(Ghost* ghost) {
     // 고스트 도어 밖 도달 체크
     if(ghost->x == GHOST_DOOR_X && ghost->y == GHOST_DOOR_Y - 1) {
         ghost->state = CHASING;
-        ghost->target_x = -1;
-        ghost->target_y = -1;
         debug_log("Ghost %c exited to door, now CHASING\n", ghost->color);
         return;
     }
@@ -500,6 +499,7 @@ DirectionResult findPossibleDirections(const Ghost* ghost, int target_x, int tar
 }
 
 // 플로우 필드 생성 함수
+
 void generateFlowField(int target_x, int target_y, GhostState ghost_state, FlowCell flow_field[MAP_HEIGHT][MAP_WIDTH]) {
     // 성능 측정용 (디버그 모드일 때만)
     clock_t start_time = 0;

@@ -1,7 +1,7 @@
 #ifndef MAPS_H
 #define MAPS_H
 
-#include "packman.h"
+#include "common.h"
 
 // 맵 관련 상수
 #define PACMAN_SPAWN_X 14
