@@ -4,6 +4,7 @@
 #include "common.h"
 #include "pacman.h"
 #include "ghost.h"
+#include "highscore.h"
 
 // 보너스 과일 구조체
 typedef struct {
@@ -27,10 +28,13 @@ extern int debug_mode;
 extern MenuOption current_menu_selection;
 extern GameState current_state;
 extern Fruit bonus_fruit;
+extern HighScoreEntry new_highscore_entry;
 
 // ========================================
 // 📊 CORE GAME STATISTICS (캡슐화)
 // ========================================
+
+// 현재 점수 반환 함수
 int getScore();
 void addScore(int points);
 int getCurrentStage();
@@ -40,10 +44,13 @@ int isPowerModeActive();
 void setPowerMode(int mode);
 double getPowerModeTimer();
 void setPowerModeTimer(double timer);
+int getHighScoreEntryActive();
+const char* getHighScoreEntryNickname();
 
 // 게임 관련 함수
 void initialize();
 void initializeBonusFruit();
+void initializeNewHighScoreEntry();
 void initializePacman(Pacman* pacman, int lives);
 void resetGame(Pacman* pacman);
 void nextStage(Pacman* pacman);
@@ -54,6 +61,11 @@ CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost);
 void spawnBonusFruit(const Pacman* pacman);
 void updateBonusFruit();
 void handleInput(Pacman* pacman);
+void handleGameOverInput(Pacman* pacman);
+void handleNormalGameOverInput(Pacman* pacman);
+void handleHighScoreInput();
+void startHighScoreEntry();
+void finishHighScoreEntry();
 void handleLogic(Pacman* pacman);
 // int getDelayTime();
 int getFruitScore(FruitTypes type);

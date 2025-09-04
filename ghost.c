@@ -95,15 +95,15 @@ void updateAllGhost(const Pacman* pacman){
                 break;
             case CHASING:
                 switch(ghosts[i].color){
-                    // case 'R':
-                    //     updateRedGhost(&ghosts[i], pacman);
-                    //     break;
-                    // case 'P':
-                    //     updatePinkGhost(&ghosts[i], pacman);
-                    //     break;
-                    // case 'G':
-                    //     updateGreenGhost(&ghosts[i], pacman);
-                    //     break;
+                    case 'R':
+                        updateRedGhost(&ghosts[i], pacman);
+                        break;
+                    case 'P':
+                        updatePinkGhost(&ghosts[i], pacman);
+                        break;
+                    case 'G':
+                        updateGreenGhost(&ghosts[i], pacman);
+                        break;
                     case 'O':
                         updateOrangeGhost(&ghosts[i], pacman);
                         break;

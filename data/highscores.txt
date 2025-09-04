@@ -1,0 +1,6 @@
+# Pacman High Scores (Top 10)
+# Format: Name, Score, Stage, Date (YYYY-MM-DD)
+PLAYERAA,100500,1,2025-09-05
+PLAYER,100200,1,2025-09-05
+PLAYER,100190,1,2025-09-05
+

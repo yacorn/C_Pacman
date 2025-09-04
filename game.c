@@ -3,6 +3,7 @@
 #include "render.h"
 #include "sound.h"
 #include "maps.h"
+#include "highscore.h"
 #include <time.h>
 #include <stdlib.h>
 
@@ -35,6 +36,7 @@ int debug_mode = 0;
 MenuOption current_menu_selection = MENU_START_GAME;  // 메뉴 선택 초기화
 
 Fruit bonus_fruit = {-1, -1, 0, 0.0, 0, 0};
+HighScoreEntry new_highscore_entry = {"", 0, 0, 0, 1};
 
 // --- 함수 구현 ---
 void initialize() {
@@ -78,6 +80,8 @@ void initialize() {
     initializeRenderSystem();
     restoreMap(map_stage1);
     
+    initializeHighScoresSystem();
+
     // 랜덤 시드 초기화
     srand((unsigned int)time(NULL));
 
@@ -100,10 +104,18 @@ void initializeBonusFruit(){
     bonus_fruit.score = 0;
 }
 
+void initializeNewHighScoreEntry(){
+    new_highscore_entry.nickname[0] = '\0';
+    new_highscore_entry.cursor_pos = 0;
+    new_highscore_entry.is_active = 0; // 비활성화
+    new_highscore_entry.achieved_score = 0;
+    new_highscore_entry.achieved_stage = 1;
+}
+
 void resetGame(Pacman* pacman){
     current_stage = 1;
     
-    score = 0;
+    score = 100000;
     
     game_time = 0;
 
@@ -123,6 +135,7 @@ void resetGame(Pacman* pacman){
     restoreMap(map_stage1);
 
     initializeGhosts();
+    initializeNewHighScoreEntry();
 
     setBgmPlaying(0);
     is_first_start = 1;
@@ -330,11 +343,11 @@ void handleLogic(Pacman* pacman) {
             break;
             
         case STATE_GAME_OVER:
-            // 게임 오버 상태에서는 로직 없음 (입력만 처리)
+            
             break;
 
         case STATE_ALL_CLEAR:
-            // 올클리어 상태에서는 로직 없음 (입력만 처리)
+            
             break;
     }
 }
@@ -360,6 +373,9 @@ void handleInput(Pacman* pacman) {
                         break;
                     case MENU_HOW_TO_PLAY:
                         setGameState(STATE_HELP);
+                        break;
+                    case MENU_HIGH_SCORE:
+                        setGameState(STATE_HIGHSCORE);
                         break;
                     case MENU_EXIT_GAME:
                         exit(0);
@@ -388,6 +404,13 @@ void handleInput(Pacman* pacman) {
                         enter_released = 0;
                     }
                 }
+            }
+            break;
+
+        case STATE_HIGHSCORE:
+            // ESC나 스페이스바로 타이틀로 돌아가기
+            if((GetAsyncKeyState(VK_ESCAPE) & 0x0001) || (GetAsyncKeyState(VK_SPACE) & 0x0001)) {
+                setGameState(STATE_TITLE);
             }
             break;
 
@@ -424,22 +447,7 @@ void handleInput(Pacman* pacman) {
             break;
             
         case STATE_GAME_OVER:
-            {
-                static int game_over_delay = 0;
-                game_over_delay++;
-
-                if(game_over_delay > 1){
-                    if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
-                        setGameState(STATE_READY);
-                        resetGame(pacman);
-                        game_over_delay = 0;
-                    }
-                    else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                        setGameState(STATE_TITLE);
-                        game_over_delay = 0;
-                    }
-                }
-            }
+            handleGameOverInput(pacman);
             break;
 
         case STATE_ALL_CLEAR:
@@ -452,6 +460,140 @@ void handleInput(Pacman* pacman) {
             }
             break;
     }
+}
+
+void handleGameOverInput(Pacman* pacman){
+    int current_score = getScore();
+
+    if(isHighScore(current_score)){
+        if(!new_highscore_entry.is_active){
+            // 하이 스코어를 달성했지만 아직 입력 모드가 아님
+            if(GetAsyncKeyState(VK_RETURN) & 0x0001){
+                // ENTER - 닉네임 입력 시작
+                startHighScoreEntry();
+            } else if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
+                // ESC - 기본 이름으로 저장하고 넘어감
+                addHighScore("PLAYER", current_score, getCurrentStage(), getCurrentDate());
+            }
+        } else {
+            // 닉네임 입력 모드
+            handleHighScoreInput();
+        }
+    } else {
+        // 일반 게임 오버 화면에서 R 또는 ESC 입력 처리
+        handleNormalGameOverInput(pacman);
+    }
+}
+
+void handleNormalGameOverInput(Pacman* pacman){
+    static int game_over_delay = 0;
+    game_over_delay++;
+
+    if(game_over_delay > 1){
+        if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
+            setGameState(STATE_READY);
+            resetGame(pacman);
+            game_over_delay = 0;
+        }
+        else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
+            setGameState(STATE_TITLE);
+            game_over_delay = 0;
+        }
+    }
+}
+
+// 닉네임 입력 처리 함수
+void handleHighScoreInput(){
+    if(!new_highscore_entry.is_active) return;
+
+    // ENTER 입력
+    if(GetAsyncKeyState(VK_RETURN) & 0x0001){
+        finishHighScoreEntry();
+        return;
+    }
+
+    // ESC 입력
+    if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
+        strcpy(new_highscore_entry.nickname, "PLAYER");
+        finishHighScoreEntry();
+        return;
+    }
+    
+    // Backspace - 문자 삭제
+    if(GetAsyncKeyState(VK_BACK) & 0x0001) {
+        // BACKSPACE - 마지막 문자 삭제
+        int len = strlen(new_highscore_entry.nickname);
+        if(len > 0){
+            new_highscore_entry.nickname[len - 1] = '\0';
+            new_highscore_entry.cursor_pos = len - 1;
+        }
+        return;
+    }
+
+    // 문자 입력 (A-Z, 0-9)
+    for(int key = 'A'; key <= 'Z'; key++){
+        if(GetAsyncKeyState(key) & 0x0001){
+            if(new_highscore_entry.cursor_pos < MAX_NAME_LENGTH - 1){
+                new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = (char)key;
+                new_highscore_entry.cursor_pos++;
+                new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = '\0';
+            }
+            Sleep(100); // 키 반복 방지
+            return;
+        }
+    }
+
+    for(int key = '0'; key <= '9'; key++){
+        if(GetAsyncKeyState(key) & 0x0001){
+            if(new_highscore_entry.cursor_pos < MAX_NAME_LENGTH - 1){
+                new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = (char)key;
+                new_highscore_entry.cursor_pos++;
+                new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = '\0';
+            }
+            Sleep(100); // 키 반복 방지
+            return;
+        }
+    }
+
+    // 스페이스바
+    if(GetAsyncKeyState(VK_SPACE) & 0x0001){
+        if(new_highscore_entry.cursor_pos < MAX_NAME_LENGTH - 1){
+            new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = '_';
+            new_highscore_entry.cursor_pos++;
+            new_highscore_entry.nickname[new_highscore_entry.cursor_pos] = '\0';
+        }
+        Sleep(100); // 키 반복 방지
+        return;
+    }
+}
+
+// 닉네임 입력 시작 함수
+void startHighScoreEntry(){
+    strcpy(new_highscore_entry.nickname, "PLAYER");
+    new_highscore_entry.cursor_pos = 6; // "PLAYER" 길이
+    new_highscore_entry.is_active = 1;
+    new_highscore_entry.achieved_score = getScore();
+    new_highscore_entry.achieved_stage = getCurrentStage();
+}
+
+// 닉네임 입력 완료 함수
+void finishHighScoreEntry(){
+    if(!new_highscore_entry.is_active) return;
+
+    if(strlen(new_highscore_entry.nickname) == 0){
+        strcpy(new_highscore_entry.nickname, "PLAYER");
+    }
+
+    int rank = addHighScore(new_highscore_entry.nickname, 
+                            new_highscore_entry.achieved_score, 
+                            new_highscore_entry.achieved_stage, 
+                            getCurrentDate());
+    debug_log("High Score Recorded! Rank: %d\n", rank);
+
+    new_highscore_entry.is_active = 0;
+
+    setGameState(STATE_HIGHSCORE);
+
 }
 
 // 보너스 과일 생성 함수
@@ -648,6 +790,7 @@ int getCurrentFPS() {
     return current_fps;
 }
 
+// 점수 반환 함수
 int getScore() {
     return score;
 }
@@ -705,4 +848,12 @@ int getFruitScore(FruitTypes type) {
 
 int isFirstStart() {
     return is_first_start;
+}
+
+int getHighScoreEntryActive() {
+    return new_highscore_entry.is_active;
+}
+
+const char* getHighScoreEntryNickname() {
+    return new_highscore_entry.nickname;
 }

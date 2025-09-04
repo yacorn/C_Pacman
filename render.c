@@ -3,6 +3,7 @@
 #include "game.h"
 #include "render.h"
 #include "sound.h"
+#include "highscore.h"
 
 static HANDLE screen[2];
 static int screen_index = 0;
@@ -75,6 +76,10 @@ void handleRender(Pacman* pacman) {
 
         case STATE_HELP:
             renderHelpScreen();
+            break;
+
+        case STATE_HIGHSCORE:
+            renderHighScoreScreen();
             break;
 
         case STATE_READY:
@@ -553,15 +558,93 @@ void renderGameOver(const Pacman* pacman) {
     // 현재 맵 상태 그대로 렌더링 (어둡게)
     int current_score = getScore();
     renderGameplayScreen(pacman);
-    
-    // 게임 오버 메시지 오버레이
+
+    if(isHighScore(current_score)){
+        renderHighScoreAchieved(pacman, current_score);
+    } else {
+        renderNormalGameOver(pacman, current_score);
+    }
+}
+
+
+void renderHighScoreAchieved(const Pacman* pacman, int score) {
     int center_x = MAP_WIDTH / 2;
     int center_y = MAP_HEIGHT / 2;
     
+    // 하이스코어 달성 축하 박스
+    drawEntity(center_x - 11, center_y - 6, "+=========================================+", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 11, center_y - 5, "|                                         |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 11, center_y - 4, "|          *** NEW HIGH SCORE! ***        |", ANSI_GREEN ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 11, center_y - 3, "|                                         |", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(center_x - 11, center_y - 2, "+=========================================+", ANSI_YELLOW ANSI_BOLD);
+    
+    // 달성 점수와 순위 정보
+    char score_text[50];
+    sprintf(score_text, "Your Score: %d", score);
+    drawEntity(center_x - 4, center_y, score_text, ANSI_CYAN ANSI_BOLD);
+    
+    char stage_text[50];
+    sprintf(stage_text, "Stage Reached: %d", getCurrentStage());
+    drawEntity(center_x - 4, center_y + 1, stage_text, ANSI_CYAN);
+    
+    // 예상 순위 계산 및 표시
+    HighScore scores[MAX_HIGHSCORES];
+    getHighScores(scores);
+    int predicted_rank = 1;
+    for(int i = 0; i < MAX_HIGHSCORES; i++) {
+        if(scores[i].score > score) {
+            predicted_rank++;
+        } else {
+            break;
+        }
+    }
+    
+    char rank_text[50];
+    sprintf(rank_text, "Predicted Rank: %d", predicted_rank);
+    drawEntity(center_x - 4, center_y + 2, rank_text, ANSI_YELLOW ANSI_BOLD);
+    
+    // 닉네임 입력 안내
+    if(!getHighScoreEntryActive()) {
+        drawEntity(center_x - 6, center_y + 4, "Press ENTER to save score", ANSI_WHITE ANSI_BOLD);
+        drawEntity(center_x - 4, center_y + 5, "Press ESC to skip", ANSI_BRIGHT_BLACK);
+    } else {
+        // 닉네임 입력 모드
+        renderNicknameInput(center_x, center_y + 4);
+    }
+    
+
+    int offset = (getHighScoreEntryActive()) ? + 1 : 0;
+    // 축하 메시지
+    static int congratulation_timer = 0;
+    const char* messages[] = {
+        "CONGRATULATIONS!",
+        "AMAZING SCORE!",
+        "INCREDIBLE!",
+        "YOU'RE AWESOME!"
+    };
+    congratulation_timer = (congratulation_timer + 1) % 120; // 2초마다 변경
+    int msg_index = (congratulation_timer / 30) % 4;
+    
+    drawEntity(center_x - 4, center_y + 7 + offset, messages[msg_index], ANSI_RAINBOW ANSI_BOLD);
+}
+
+
+void renderNormalGameOver(const Pacman* pacman, const int current_score){
+    // 게임 오버 메시지 오버레이
+    int center_x = MAP_WIDTH / 2;
+    int center_y = MAP_HEIGHT / 2;
+
+    int offset = (getHighScoreEntryActive() == -1) ? -1 : 0;
+
     // ASCII 문자만 사용
-    drawEntity(center_x - 7, center_y - 2, "+==========================+", ANSI_BLACK);
-    drawEntity(center_x - 7, center_y - 1, "|        GAME OVER         |", ANSI_RED ANSI_BOLD ANSI_BLINK);
-    drawEntity(center_x - 7, center_y,     "+==========================+", ANSI_BLACK);
+    drawEntity(center_x - 7, center_y - 2 + offset, "+==========================+", ANSI_BLACK);
+    drawEntity(center_x - 7, center_y - 1 + offset, "|        GAME OVER         |", ANSI_RED ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 7, center_y + offset,     "+==========================+", ANSI_BLACK);
+
+    // ✅ 하이스코어 저장 완료 메시지
+    if(getHighScoreEntryActive() == -1) {
+        drawEntity(center_x - 8, center_y - 4, "*** HIGH SCORE SAVED! ***", ANSI_GREEN ANSI_BOLD);
+    }
 
     drawEntity(center_x - 4, center_y + 2, "Press R to Restart", ANSI_WHITE);
     drawEntity(center_x - 2, center_y + 3, "ESC to Quit", ANSI_WHITE);
@@ -570,6 +653,42 @@ void renderGameOver(const Pacman* pacman) {
     char final_score[50];
     sprintf(final_score, "Final Score: %d", current_score);
     drawEntity(center_x - 4, center_y + 5, final_score, ANSI_YELLOW ANSI_BOLD);
+}
+
+// 닉네임 입력 UI
+void renderNicknameInput(int base_x, int base_y) {
+    // 닉네임 입력 안내
+    drawEntity(base_x - 4, base_y, "Enter your name:", ANSI_WHITE ANSI_BOLD);
+    
+    // 입력 박스
+    drawEntity(base_x - 5, base_y + 1, "+================+", ANSI_WHITE);
+    drawEntity(base_x - 5, base_y + 2, "|                |", ANSI_WHITE);
+    drawEntity(base_x - 5, base_y + 3, "+================+", ANSI_WHITE);
+    
+    // 현재 입력된 닉네임 + 커서
+    char display_name[MAX_NAME_LENGTH + 2];
+    strcpy(display_name, getHighScoreEntryNickname());
+    
+    // 커서 깜빡임 효과
+    static int cursor_blink = 0;
+    cursor_blink = (cursor_blink + 1) % 30;
+    
+    if(cursor_blink < 15) {
+        strcat(display_name, "_");
+    } else {
+        strcat(display_name, " ");
+    }
+    
+    // 닉네임을 박스 중앙에 표시
+    drawEntity(base_x - 3, base_y + 2, display_name, ANSI_GREEN ANSI_BOLD);
+    
+    // 입력 안내
+    char length_info[30];
+    sprintf(length_info, "%d/%d chars", (int)strlen(getHighScoreEntryNickname()), MAX_NAME_LENGTH - 1);
+    drawEntity(base_x - 3, base_y + 5, length_info, ANSI_BRIGHT_BLACK);
+    
+    drawEntity(base_x - 6, base_y + 6, "A-Z, 0-9, SPACE, BACKSPACE", ANSI_WHITE);
+    drawEntity(base_x - 6, base_y + 7, "ENTER: Confirm  ESC: Cancel", ANSI_WHITE);
 }
 
 
@@ -668,8 +787,8 @@ void renderTitleScreen() {
     drawEntity(center_x - 8, center_y - 4, "##          ##     ##   #######   ##     ##  ##    #     ##", ANSI_YELLOW ANSI_BOLD);
     
     // 메뉴 옵션들
-    char* menu_texts[MENU_COUNT] = {"Game Start", "How to Play", "Exit Game"};
-    char* menu_colors[MENU_COUNT] = {ANSI_WHITE, ANSI_WHITE, ANSI_WHITE};
+    char* menu_texts[MENU_COUNT] = {"Game Start", "How to Play", "High Scores", "Exit Game"};
+    char* menu_colors[MENU_COUNT] = {ANSI_WHITE, ANSI_WHITE, ANSI_WHITE, ANSI_WHITE};
     
     for(int i = 0; i < MENU_COUNT; i++) {
         if(i == current_menu_selection) {
@@ -729,5 +848,57 @@ void renderHelpScreen() {
     drawEntity(center_x - 6, start_y + 27, "Press any ESC or SPACE to go back", ANSI_CYAN ANSI_BOLD);
 }
 
-// ... 이 외 render.c에 속하기로 한 모든 함수의 구현 ...
-// renderGameplayScreen, renderGameOver, renderDebugInfo 등
+// 하이스코어 화면 렌더링
+void renderHighScoreScreen() {
+    HighScore scores[MAX_HIGHSCORES];
+    int start_x = 5;  // 왼쪽부터 시작
+    int start_y = 3;
+    
+    // 타이틀
+    drawEntity(start_x + 10, start_y, "HIGH SCORES", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(start_x + 8, start_y + 1, "==============", ANSI_YELLOW);
+    
+    // 테이블 헤더
+    drawEntity(start_x,      start_y + 3, "RANK", ANSI_WHITE ANSI_BOLD);
+    drawEntity(start_x + 6,  start_y + 3, "NAME", ANSI_WHITE ANSI_BOLD);
+    drawEntity(start_x + 18, start_y + 3, "SCORE", ANSI_WHITE ANSI_BOLD);
+    drawEntity(start_x + 26, start_y + 3, "STAGE", ANSI_WHITE ANSI_BOLD);
+    drawEntity(start_x + 32, start_y + 3, "DATE", ANSI_WHITE ANSI_BOLD);
+    
+    // 구분선
+    drawEntity(start_x, start_y + 4, "========================================", ANSI_CYAN);
+    
+    int load_result = getHighScores(scores);
+    
+    if(load_result == -1) {
+        drawEntity(start_x + 8, start_y + 8, "No high scores yet!", ANSI_RED);
+        drawEntity(start_x + 6, start_y + 10, "Play the game to set records!", ANSI_WHITE);
+    } else {
+        for(int i = 0; i < MAX_HIGHSCORES && i < 10; i++) {
+            if(scores[i].score > 0) {
+                char rank_str[4];
+                char score_str[10];
+                char stage_str[4];
+                
+                sprintf(rank_str, "%2d.", i + 1);
+                sprintf(score_str, "%7d", scores[i].score);
+                sprintf(stage_str, "%2d", scores[i].stage);
+                
+                const char* color = (i < 3) ? ANSI_YELLOW ANSI_BOLD : ANSI_WHITE;
+                
+                drawEntity(start_x,      start_y + 6 + i, rank_str, color);
+                drawEntity(start_x + 6,  start_y + 6 + i, scores[i].name, color);
+                drawEntity(start_x + 18, start_y + 6 + i, score_str, color);
+                drawEntity(start_x + 26, start_y + 6 + i, stage_str, color);
+                drawEntity(start_x + 32, start_y + 6 + i, scores[i].date, color);
+                
+                if(i == 0) {
+                    drawEntity(start_x - 2, start_y + 6 + i, ">>", ANSI_YELLOW ANSI_BOLD);
+                }
+            }
+        }
+    }
+    
+    // 하단 메시지
+    drawEntity(start_x + 8, start_y + 20, "Press ESC or SPACE to go back", ANSI_WHITE ANSI_BOLD);
+}
