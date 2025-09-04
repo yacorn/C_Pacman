@@ -15,5 +15,7 @@ void updatePacman(Pacman* pacman);
 void processInput(Pacman* pacman);
 void activatePowerMode();
 void initializePacman(Pacman* pacman, int lives);
+void handlePacmanDeath(Pacman* pacman);
+void initializePacman(Pacman* pacman, int lives);
 
 #endif // PACMAN_H

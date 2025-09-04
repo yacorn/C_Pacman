@@ -64,6 +64,52 @@ void releaseScreen() {
     CloseHandle(screen[1]);
 }
 
+// 렌더링 함수
+void handleRender(Pacman* pacman) {
+    clear();
+    
+    switch(current_state) {
+        case STATE_TITLE:
+            renderTitleScreen();
+            break;
+
+        case STATE_HELP:
+            renderHelpScreen();
+            break;
+
+        case STATE_READY:
+            renderGameplayScreen(pacman);
+            drawEntity(MAP_WIDTH/2 - 1, MAP_HEIGHT/2 + 2, "Ready!", ANSI_YELLOW);
+            break;
+
+        case STATE_PLAYING:
+            renderGameplayScreen(pacman);
+            break;
+
+        case STATE_PACMAN_DEATH:
+            renderGameplayScreen(pacman);
+            break;
+        
+        case STATE_LEVEL_COMPLETE:
+            renderGameComplete(pacman);
+            break;
+
+        case STATE_GAME_OVER:
+            renderGameOver(pacman);
+            break;
+
+        case STATE_ALL_CLEAR:
+            renderAllClear(pacman);
+            break;
+    }
+    
+    if (debug_mode) {
+        renderDebugInfo(pacman);
+    }
+
+    flip();
+}
+
 
 void drawEntity(int x, int y, const char* str, const char* color){
     COORD pos = {x * 2, y};
@@ -105,7 +151,7 @@ void drawMapInfo() {
     }
     
     // ✅ 총 쿠키 개수와 먹은 개수 표시 (더 효율적)
-    sprintf(buffer, "COOKIES: %d/%d", total_cookies - cookies_eaten, total_cookies);
+    sprintf(buffer, "COOKIES: %d/%d", getTotalCookies() - cookies_eaten, getTotalCookies());
     drawEntity(map_x / 2, base_y + 2, buffer, COOKIE_COLOR);
     // sprintf(buffer, "COOKIES: %d", remaining_cookies);
     // drawEntity(map_x / 2, base_y + 2, buffer, COOKIE_COLOR);

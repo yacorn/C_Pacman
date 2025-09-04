@@ -27,10 +27,21 @@ extern const int MAX_STAGES;
 // 맵 관리 함수들
 void initializeMaps(void);
 void restoreMap(const int source_map[MAP_HEIGHT][MAP_WIDTH]);
-int getCurrentMapTotalCookies(void);
+int getCurrentMapRemainingCookies(void);
 int getMapCookieCount(const int map[MAP_HEIGHT][MAP_WIDTH]);
 
 int getCurrentMapTileAt(int x, int y);
 void setCurrentMapTileAt(int x, int y, int new_tile);
+
+// 쿠키 관련
+int getCookiesEaten(void);
+void eatCookie(void);
+void resetCookiesEaten(void);
+void resetTotalCookies(void);
+int getTotalCookies(void);
+void setTotalCookies(int count);
+
+// 오렌지 고스트 도망 위치
+Position getOrangeGhostEscapePosition(int stage);
 
 #endif // MAPS_H

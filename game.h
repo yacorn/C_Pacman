@@ -19,11 +19,11 @@ typedef struct {
 // extern int score;
 // extern int power_mode;
 // extern double power_mode_timer;
-extern int total_cookies;
+// extern int total_cookies;
 // extern int cookies_eaten;
 // extern int current_stage;
 extern int debug_mode;
-extern int is_first_start;
+// extern int is_first_start;
 extern MenuOption current_menu_selection;
 extern GameState current_state;
 extern Fruit bonus_fruit;
@@ -34,41 +34,30 @@ extern Fruit bonus_fruit;
 int getScore();
 void addScore(int points);
 int getCurrentStage();
-int getCookiesEaten();
-void eatCookie();
-int getTotalCookies();
 // GameState getCurrentGameState();
 void setGameState(GameState state);
 int isPowerModeActive();
 void setPowerMode(int mode);
 double getPowerModeTimer();
 void setPowerModeTimer(double timer);
-int getGhostReleased();
-void setGhostReleased(int count);
-void addGhostReleased(int value);
-double getGhostReleaseTimer();
-void setGhostReleaseTimer(double timer);
 
 // 게임 관련 함수
 void initialize();
+void initializeBonusFruit();
+void initializePacman(Pacman* pacman, int lives);
 void resetGame(Pacman* pacman);
 void nextStage(Pacman* pacman);
 void adjustDifficulty();
 void handleCollisions(Pacman* pacman, int* score);
-void handlePacmanDeath(Pacman* pacman);
-void handleGhostEaten(Ghost* ghost, int* score);
 int isLevelComplete();
 CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost);
 void spawnBonusFruit(const Pacman* pacman);
 void updateBonusFruit();
-void updateBackGroundMusic();
 void handleInput(Pacman* pacman);
-void handleLogic(Pacman* pacman);  // 새로 추가된 함수
-void handleRender(Pacman* pacman);
-void handleSound();
-void stopAllGameSounds();
+void handleLogic(Pacman* pacman);
 // int getDelayTime();
 int getFruitScore(FruitTypes type);
+int isFirstStart();
 
 // Delta Time 관리 함수들
 void updateDeltaTime();
@@ -76,6 +65,7 @@ void updateDeltaTime();
 void updateTimersRealTime(double dt);
 void updatePowerMode(double dt);
 void updateReadyState(double dt);
+void resetReadyTimer();
 void updateGhostReleaseState(double dt);
 void updateBonusFruitState(double dt);
 double getDeltaTime();

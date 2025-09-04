@@ -203,7 +203,7 @@ void activatePowerMode() {
 
     debug_log("Playing power_up.wav (single play)...\n");
     playSoundMci("sounds/power_up.wav", "power_up", 0); // loop = 0으로 변경
-    power_music_active = 1; // 플래그 설정
+    setPowerMusicActive(1); // 플래그 설정
 
     for(int i = 0; i < MAX_GHOSTS; i++){
         if(ghosts[i].state == CHASING){
@@ -221,4 +221,32 @@ void activatePowerMode() {
     
     debug_log("=== activatePowerMode end ===\n");
 }
+
+void handlePacmanDeath(Pacman* pacman){
+    pacman->lives--;
+    setGameState(STATE_PACMAN_DEATH);
+
+    // 팩맨 방향 초기화
+    pacman->direction = DIR_NONE;
+
+    setPowerMode(0);
+    setPowerModeTimer(0);
+
+    // 모든 유령들 대기 상태로 초기화
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        if(ghosts[i].state == FRIGHTENED){
+            ghosts[i].state = CHASING;
+        }
+    }
+}
+
+void initializePacman(Pacman* pacman, int lives){
+    pacman->x = PACMAN_SPAWN_X;
+    pacman->y = PACMAN_SPAWN_Y;
+    pacman->prev_x = PACMAN_SPAWN_X;
+    pacman->prev_y = PACMAN_SPAWN_Y;
+    pacman->direction = DIR_NONE;
+    pacman->lives = lives;
+}
+
 

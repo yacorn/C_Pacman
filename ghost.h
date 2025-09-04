@@ -70,6 +70,7 @@ extern GhostReleaseCondition release_conditions[];
 // extern double ghost_release_timer;
 // extern double ghost_release_interval;
 extern int queue_front, queue_rear, queue_count;
+// extern int ghost_back_active;
 
 // 고스트 관련 함수
 void initializeGhosts();
@@ -94,5 +95,17 @@ void findPacmanFuturePosition(const Pacman* pacman, int* future_x, int* future_y
 DirectionResult findPossibleDirections(const Ghost* ghost, int target_x, int target_y, int exclude_opposite);
 void generateFlowField(int target_x, int target_y, GhostState ghost_state, FlowCell flow_field[MAP_HEIGHT][MAP_WIDTH]);
 Direction getFlowFieldDirection(int x, int y, FlowCell flow_field[MAP_HEIGHT][MAP_WIDTH]);
+void handleGhostEaten(Ghost* ghost, int* score);
+// 고스트 릴리즈 상태 업데이트
+void updateGhostReleaseState(double dt);
+int getGhostReleased();
+void setGhostReleased(int count);
+void addGhostReleased(int value);
+double getGhostReleaseTimer();
+void setGhostReleaseTimer(double timer);
+double getGhostReleaseInterval();
+void setGhostReleaseInterval(double interval);
+int isGhostBackActive();
+void setGhostBackActive(int active);
 
 #endif // GHOST_H

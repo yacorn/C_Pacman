@@ -2,6 +2,9 @@
 #include "maps.h"
 #include <string.h>
 
+static int cookies_eaten = 0;
+static int total_cookies = 0;
+
 int map_stage1[MAP_HEIGHT][MAP_WIDTH] = {
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
     {1,3,2,2,2,2,2,2,2,2,2,2,2,1,1,1,2,2,2,2,2,2,2,2,2,2,2,3,1},
@@ -155,6 +158,14 @@ const int (*all_maps[])[MAP_WIDTH] = {
 // 최대 스테이지 수
 const int MAX_STAGES = sizeof(all_maps) / sizeof(all_maps[0]);
 
+// 오렌지 고스트 스테이지별 도망 위치
+const Position orange_ghost_escape_positions[] = {
+    {1, 29}, // stage 1
+    {1, 27}, // stage 2
+    {1, 27}, // stage 3
+    {1, 29}  // stage 4
+};
+
 // === 함수 구현 ===
 
 void initializeMaps(void) {
@@ -174,7 +185,7 @@ void restoreMap(const int source_map[MAP_HEIGHT][MAP_WIDTH]) {
     debug_log("Map restored successfully\n");
 }
 
-int getCurrentMapTotalCookies(void) {
+int getCurrentMapRemainingCookies(void) {
     return getMapCookieCount(current_map);
 }
 
@@ -208,3 +219,37 @@ void setCurrentMapTileAt(int x, int y, int new_tile) {
     current_map[y][x] = new_tile;
     return;  // Success
 }
+
+// 쿠키 관련
+int getCookiesEaten(void){
+    return cookies_eaten;
+}
+void eatCookie(void){
+    cookies_eaten++;
+}
+void resetCookiesEaten(void){
+    cookies_eaten = 0;
+}
+void resetTotalCookies(void){
+    total_cookies = 0;
+}
+int getTotalCookies(void){
+    return total_cookies;
+}
+void setTotalCookies(int count){
+    total_cookies = count;
+}
+
+// 오렌지 고스트 도망 위치
+Position getOrangeGhostEscapePosition(int stage) {
+    if (stage < 0 || stage > MAX_STAGES) {
+        debug_log("ERROR: Invalid stage %d for orange ghost escape position\n", stage);
+        return (Position){-1, -1}; // Invalid position
+    }
+    return orange_ghost_escape_positions[stage - 1];
+}
+
+
+
+
+

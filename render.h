@@ -15,6 +15,7 @@ void hideCursor();
 void clear();
 void flip();
 void releaseScreen();
+void handleRender(Pacman* pacman);
 void drawEntity(int x, int y, const char* str, const char* color);
 void renderGameplayScreen(const Pacman* pacman);
 void renderGameComplete(const Pacman* pacman);

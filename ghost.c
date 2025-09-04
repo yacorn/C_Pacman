@@ -6,6 +6,11 @@
 #include <time.h>
 #include <limits.h>
 
+static int ghost_released = 1;
+static double ghost_release_timer = 0.0;
+static double ghost_release_interval = 0.0;
+static int ghost_back_active = 0;
+
 Ghost ghosts[MAX_GHOSTS];
 Ghost* ghostQueue[MAX_GHOSTS];
 int queue_front = 0, queue_rear = 0, queue_count = 0;
@@ -24,7 +29,7 @@ void initializeGhosts() {
     ghosts[3] = (Ghost){ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, DIR_NONE, WAITING, 'O', -1, -1};
 
     setGhostReleased(1);
-    setGhostReleasedTimer(0.0);
+    setGhostReleaseTimer(0.0);
 
     // 큐를 한번 싹다 비우기
     clearGhostQueue();
@@ -90,15 +95,15 @@ void updateAllGhost(const Pacman* pacman){
                 break;
             case CHASING:
                 switch(ghosts[i].color){
-                    case 'R':
-                        updateRedGhost(&ghosts[i], pacman);
-                        break;
-                    case 'P':
-                        updatePinkGhost(&ghosts[i], pacman);
-                        break;
-                    case 'G':
-                        updateGreenGhost(&ghosts[i], pacman);
-                        break;
+                    // case 'R':
+                    //     updateRedGhost(&ghosts[i], pacman);
+                    //     break;
+                    // case 'P':
+                    //     updatePinkGhost(&ghosts[i], pacman);
+                    //     break;
+                    // case 'G':
+                    //     updateGreenGhost(&ghosts[i], pacman);
+                    //     break;
                     case 'O':
                         updateOrangeGhost(&ghosts[i], pacman);
                         break;
@@ -169,24 +174,38 @@ void updateGreenGhost(Ghost* ghost, const Pacman* pacman){
 }
 
 void updateOrangeGhost(Ghost* ghost, const Pacman* pacman){
+    static int chase_mode = 1;
+    
     // 먼저 팩맨과 고스트의 거리를 구해보자
     int dx = pacman->x - ghost->x;
     int dy = pacman->y - ghost->y;
 
     int distance = dx * dx + dy * dy;
-    if(distance >= ORANGE_GHOST_CHASE_DISTANCE){ // 8*8 = 64
+
+    // 거리가 8타일(64) 이상이면 추격 모드, 이하면 구석으로 이동
+    if(distance >= ORANGE_GHOST_CHASE_DISTANCE && chase_mode == 1){
         ghost->target_x = pacman->x;
         ghost->target_y = pacman->y;
 
         decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
         moveGhost(ghost);
-    } else {
-        // 맵의 왼쪽 아래 코너 좌표를 하드코딩 (1, 29)
-        ghost->target_x = 1;
-        ghost->target_y = 29;
 
-        decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
-        moveGhost(ghost);
+    } else {
+
+        chase_mode = 0;
+
+        if(ghost->x == ghost->target_x && ghost->y == ghost->target_y){
+
+            chase_mode = 1; // 구석에 도달하면 다시 추격 모드로 전환
+
+        } else {
+            Position escape_pos = getOrangeGhostEscapePosition(getCurrentStage());
+            ghost->target_x = escape_pos.x;
+            ghost->target_y = escape_pos.y;
+            decideGhostDirectionToTarget(ghost, ghost->target_x, ghost->target_y);
+            moveGhost(ghost);
+        }
+        
     }
 }
 
@@ -547,6 +566,46 @@ DirectionResult findPossibleDirections(const Ghost* ghost, int target_x, int tar
     return result;
 }
 
+void handleGhostEaten(Ghost* ghost, int* score){
+    static int ghost_combo = 0;
+    int points = GHOST_COMBO_BASE_SCORE * (1 << ghost_combo);
+    *score += points;
+    ghost_combo++;
+
+    // 파워 업 사운드를  멈춘다
+    stopSoundMci("power_up");
+
+    // 유령 먹는 소리를 재생
+    playSoundAndWait("sounds/pacman_eats_ghost.wav", "ghost_eaten");
+
+    ghost->state = RETURNING;
+    ghost->target_x = GHOST_ZONE_X;
+    ghost->target_y = GHOST_ZONE_Y;
+
+    // 고스트가 돌아가는 소리 재생
+    playSoundMci("sounds/ghost_back_to_base.wav", "loop_sfx", 1);
+    ghost_back_active = 1;
+
+    if(getPowerModeTimer() <= 0){
+        ghost_combo = 0;
+    }
+}
+
+// 고스트 릴리즈 상태 업데이트
+void updateGhostReleaseState(double dt){
+    // === 고스트 릴리즈 실시간 관리 ===
+    if (ghost_released < MAX_GHOSTS && current_state == STATE_PLAYING) {
+        ghost_release_timer += dt;
+
+        if (ghost_release_timer >= ghost_release_interval) {
+            dequeueGhost();
+            ghost_released++;
+            ghost_release_timer = 0;
+            debug_log("Ghost released! Total: %d\n", ghost_released);
+        }
+    }
+}
+
 // 플로우 필드 생성 함수
 
 void generateFlowField(int target_x, int target_y, GhostState ghost_state, FlowCell flow_field[MAP_HEIGHT][MAP_WIDTH]) {
@@ -630,4 +689,38 @@ Direction getFlowFieldDirection(int x, int y, FlowCell flow_field[MAP_HEIGHT][MA
     return flow_field[y][x].direction;
 }
 
-// ... 이 외 ghost.c에 속하기로 한 모든 유령 관련 함수의 구현 ...
+int getGhostReleased() {
+    return ghost_released;
+}
+
+void setGhostReleased(int value) {
+    ghost_released = value;
+}
+
+void addGhostReleased(int value) {
+    ghost_released += value;
+}
+
+double getGhostReleaseTimer() {
+    return ghost_release_timer;
+}
+
+void setGhostReleaseTimer(double timer) {
+    ghost_release_timer = timer;
+}
+
+double getGhostReleaseInterval() {
+    return ghost_release_interval;
+}
+
+void setGhostReleaseInterval(double interval) {
+    ghost_release_interval = interval;
+}
+
+int isGhostBackActive() {
+    return ghost_back_active;
+}
+
+void setGhostBackActive(int active) {
+    ghost_back_active = active;
+}
