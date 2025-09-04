@@ -6,6 +6,10 @@
 #include <time.h>
 #include <limits.h>
 
+Ghost ghosts[MAX_GHOSTS];
+Ghost* ghostQueue[MAX_GHOSTS];
+int queue_front = 0, queue_rear = 0, queue_count = 0;
+
 void initializeGhosts() {
     // 빨간 GHOST
     ghosts[0] = (Ghost){RED_GHOST_SPAWN_X, RED_GHOST_SPAWN_Y - 4, RED_GHOST_SPAWN_X, RED_GHOST_SPAWN_Y, DIR_NONE, CHASING, 'R', -1, -1};
@@ -19,11 +23,56 @@ void initializeGhosts() {
     // 주황 유령
     ghosts[3] = (Ghost){ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, ORANGE_GHOST_SPAWN_X, ORANGE_GHOST_SPAWN_Y, DIR_NONE, WAITING, 'O', -1, -1};
 
-    // 큐를 한번 싹다 비우고 추가
+    setGhostReleased(1);
+    setGhostReleasedTimer(0.0);
+
+    // 큐를 한번 싹다 비우기
     clearGhostQueue();
 
     for(int i = 1; i < MAX_GHOSTS; i++){
         enqueueGhost(&ghosts[i]);
+    }
+}
+
+void enqueueGhost(Ghost* ghost){
+    if(queue_count < MAX_GHOSTS){
+
+        for(int i = 0; i < queue_count; i++){
+            int queue_index = (queue_front + i) % MAX_GHOSTS;
+            if(ghostQueue[queue_index] == ghost){
+                return;
+            }
+        }
+
+        ghostQueue[queue_rear] = ghost;
+        queue_rear = (queue_rear + 1) % MAX_GHOSTS;
+        queue_count++;
+        ghost->state = WAITING;
+        ghost->direction = DIR_NONE;
+    }
+}
+
+Ghost* frontGhost() {
+    if(queue_count > 0) return ghostQueue[queue_front];
+    return NULL;
+}
+
+void dequeueGhost(){
+    if(queue_count > 0){
+        Ghost* ghost = ghostQueue[queue_front];
+        ghost->state = EXITING;
+        queue_front = (queue_front + 1) % MAX_GHOSTS;
+        queue_count--;
+    }
+}
+
+void clearGhostQueue(){
+    queue_front = 0;
+    queue_rear = 0;
+    queue_count = 0;
+
+    for(int i = 0; i < MAX_GHOSTS; i++){
+        ghostQueue[i] = NULL;
     }
 }
 
@@ -175,11 +224,11 @@ void updateEatenGhost(Ghost* ghost){
         // 유령이 돌아가는 소리를 멈춘다
         stopSoundMci("loop_sfx");
 
-        if(power_mode){
+        if(isPowerModeActive()){
             playSoundMci("sounds/power_up.wav", "power_up", 1);
         }
         enqueueGhost(ghost);
-        ghost_released--;
+        addGhostReleased(-1);
     }
 }
 
@@ -563,8 +612,8 @@ void generateFlowField(int target_x, int target_y, GhostState ghost_state, FlowC
     if(debug_mode) {
         clock_t end_time = clock();
         double time_taken = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-        debug_log("Flow field generation for target (%d,%d): %.4f seconds, processed %d cells\n", 
-                 target_x, target_y, time_taken, rear);
+        // debug_log("Flow field generation for target (%d,%d): %.4f seconds, processed %d cells\n", 
+        //          target_x, target_y, time_taken, rear);
     }
 }
 

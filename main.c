@@ -5,7 +5,6 @@ int main() {
     initialize();
     
     Pacman pacman;
-    current_state = STATE_TITLE;
 
     while(1){
         // 1. Delta time 업데이트

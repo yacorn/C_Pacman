@@ -4,6 +4,26 @@
 #include "render.h"
 #include "sound.h"
 
+static HANDLE screen[2];
+static int screen_index = 0;
+
+void initializeRenderSystem(){
+    screen[0] = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+    screen[1] = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
+
+    DWORD dwMode = 0;
+    GetConsoleMode(screen[0], &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(screen[0], dwMode);
+
+    GetConsoleMode(screen[1], &dwMode);
+    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+    SetConsoleMode(screen[1], dwMode);
+
+    hideCursor();
+}
+
+
 void hideCursor() {
     CONSOLE_CURSOR_INFO cursor_info;
 
@@ -60,6 +80,8 @@ void drawEntity(int x, int y, const char* str, const char* color){
 
 void drawMapInfo() {
     // 맵 관련 정보
+    int current_stage = getCurrentStage();
+    int cookies_eaten = getCookiesEaten();
     int score_x = MAP_WIDTH * 2 + 2;
     int map_x = score_x + 20;
     int base_y = 23;  // 게임 상태 정보 아래
@@ -95,6 +117,23 @@ void drawMapInfo() {
     // 현재 스테이지
     sprintf(buffer, "STAGE: %d", current_stage);
     drawEntity(map_x / 2, base_y + 4, buffer, ANSI_BRIGHT_BLACK);
+
+    // 보너스 과일 정보
+    const char* fruit_names[] = {
+        "CHERRY", "STRAWBERRY", "ORANGE", "APPLE", "MELON", "NONE"
+    };
+    sprintf(buffer, "FRUIT: %s", bonus_fruit.active ? fruit_names[bonus_fruit.type] : "NONE");
+    drawEntity(map_x / 2, base_y + 5, buffer, bonus_fruit.active ? SUCCESS_COLOR : ANSI_BRIGHT_BLACK);
+
+    // 보너스 과일 타이머
+    if(bonus_fruit.active) {
+        sprintf(buffer, "FRUIT TIME: %.1f seconds", bonus_fruit.timer);
+        drawEntity(map_x / 2, base_y + 6, buffer, SUCCESS_COLOR);
+    } else {
+        sprintf(buffer, "FRUIT TIME: N/A");
+        drawEntity(map_x / 2, base_y + 6, buffer, ANSI_BRIGHT_BLACK);
+    }
+
 }
 
 
@@ -103,6 +142,7 @@ void drawGameStateInfo() {
     int score_x = MAP_WIDTH * 2 + 2;
     int state_x = score_x + 20;
     int base_y = 17;  // 팩맨 정보 아래
+    
     char buffer[60];
     
     // 게임 상태 헤더
@@ -114,8 +154,8 @@ void drawGameStateInfo() {
     drawEntity(state_x / 2, base_y + 1, buffer, ANSI_CYAN);
     
     // 파워 모드 정보
-    if(power_mode) {
-        sprintf(buffer, "POWER: %.1f ticks", power_mode_timer);
+    if(isPowerModeActive()) {
+        sprintf(buffer, "POWER: %.1f seconds", getPowerModeTimer());
         drawEntity(state_x / 2, base_y + 2, buffer, ANSI_RED ANSI_BLINK);
     } else {
         sprintf(buffer, "POWER: OFF");
@@ -154,8 +194,12 @@ void drawGameStateInfo() {
             break;
     }
     // 릴리즈된 고스트 수
-    sprintf(buffer, "RELEASED: %d/%d", ghost_released, MAX_GHOSTS);
+    sprintf(buffer, "RELEASED: %d/%d", getGhostReleased(), MAX_GHOSTS);
     drawEntity(state_x / 2, base_y + 4, buffer, ANSI_YELLOW);
+
+    // 고스트 릴리즈 타이머
+    sprintf(buffer, "GHOST TIMER: %.1f sec", getGhostReleaseTimer());
+    drawEntity(state_x / 2, base_y + 5, buffer, ANSI_YELLOW);
 }
 
 
@@ -301,7 +345,8 @@ void drawGhostDebugInfo(){
 }
 
 
-void drawScore(int score, int lives){
+void drawScore(int lives){
+    int score = getScore();
     int score_x = MAP_WIDTH * 2 + 2;
 
     drawEntity(score_x / 2, 2, "SCORE", INFO_COLOR);
@@ -379,7 +424,7 @@ void renderGhost(const Ghost* ghost, int x, int y) {
     char ghost_str[2] = {ghost->color, '\0'};
     
     if(ghost->state == FRIGHTENED){
-        if(power_mode_timer > 20){
+        if(getPowerModeTimer() > POWER_MODE_DURATION * 0.5){
             drawEntity(x, y, ghost_str, ANSI_BLUE ANSI_BOLD); // 파란색
         } else {
             drawEntity(x, y, ghost_str, ANSI_WHITE ANSI_BLINK); // 흰색 깜빡임
@@ -406,7 +451,7 @@ void renderFruit(FruitTypes type, int x, int y){
 }
 
 
-void renderGameplayScreen(const Pacman* pacman, int score){
+void renderGameplayScreen(const Pacman* pacman){
     for (int y = 0; y < MAP_HEIGHT; y++){
         for(int x = 0; x < MAP_WIDTH; x++){
             int is_ghost_here = 0;
@@ -454,13 +499,14 @@ void renderGameplayScreen(const Pacman* pacman, int score){
         }
     }
 
-    drawScore(score, pacman->lives);
+    drawScore(pacman->lives);
 }
 
 
-void renderGameOver(const Pacman* pacman, int score) {
+void renderGameOver(const Pacman* pacman) {
     // 현재 맵 상태 그대로 렌더링 (어둡게)
-    renderGameplayScreen(pacman, score);
+    int current_score = getScore();
+    renderGameplayScreen(pacman);
     
     // 게임 오버 메시지 오버레이
     int center_x = MAP_WIDTH / 2;
@@ -476,14 +522,15 @@ void renderGameOver(const Pacman* pacman, int score) {
     
     // 최종 스코어
     char final_score[50];
-    sprintf(final_score, "Final Score: %d", score);
+    sprintf(final_score, "Final Score: %d", current_score);
     drawEntity(center_x - 4, center_y + 5, final_score, ANSI_YELLOW ANSI_BOLD);
 }
 
 
-void renderGameComplete(const Pacman* pacman, int score) {
+void renderGameComplete(const Pacman* pacman) {
+    int current_stage = getCurrentStage();
     // 현재 맵 상태 그대로 렌더링 (AI와 팩맨은 정지된 상태)
-    renderGameplayScreen(pacman, score);
+    renderGameplayScreen(pacman);
     
     // 게임 완료 메시지 오버레이
     int center_x = MAP_WIDTH / 2;
@@ -506,7 +553,9 @@ void renderGameComplete(const Pacman* pacman, int score) {
 }
 
 
-void renderAllClear(const Pacman* pacman, int score){
+void renderAllClear(const Pacman* pacman){
+    int current_stage = getCurrentStage();
+    int score = getScore();
     // 배경을 어둡게 표시
     for (int y = 0; y < MAP_HEIGHT; y++){
         for(int x = 0; x < MAP_WIDTH; x++){
@@ -557,7 +606,7 @@ void renderAllClear(const Pacman* pacman, int score){
     drawEntity(center_x - 7, center_y + 12, "★ PERFECT GAME CLEAR! ★", ANSI_RAINBOW ANSI_BLINK);
     
     // 사이드에 스코어 정보도 표시
-    drawScore(score, pacman->lives);
+    drawScore(pacman->lives);
 }
 
 // 타이틀 화면 렌더링

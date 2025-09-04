@@ -66,13 +66,17 @@ typedef struct {
 extern Ghost ghosts[MAX_GHOSTS];
 extern Ghost* ghostQueue[MAX_GHOSTS];
 extern GhostReleaseCondition release_conditions[];
-extern int ghost_released;
-extern double ghost_release_timer;
-extern double ghost_release_interval;
+// extern int ghost_released;
+// extern double ghost_release_timer;
+// extern double ghost_release_interval;
 extern int queue_front, queue_rear, queue_count;
 
 // 고스트 관련 함수
 void initializeGhosts();
+void enqueueGhost(Ghost* ghost);
+Ghost* frontGhost();
+void dequeueGhost();
+void clearGhostQueue();
 void updateExitingGhost(Ghost* ghost);
 void updateRedGhost(Ghost* ghost, const Pacman* pacman);
 void updatePinkGhost(Ghost* ghost, const Pacman* pacman);

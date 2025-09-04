@@ -15,18 +15,39 @@ typedef struct {
 } Fruit;
 
 // 게임 관련 변수 (extern)
-extern int game_time;
-extern int score;
-extern int power_mode;
-extern double power_mode_timer;
+// extern int game_time;
+// extern int score;
+// extern int power_mode;
+// extern double power_mode_timer;
 extern int total_cookies;
-extern int cookies_eaten;
-extern int current_stage;
+// extern int cookies_eaten;
+// extern int current_stage;
 extern int debug_mode;
 extern int is_first_start;
 extern MenuOption current_menu_selection;
 extern GameState current_state;
 extern Fruit bonus_fruit;
+
+// ========================================
+// 📊 CORE GAME STATISTICS (캡슐화)
+// ========================================
+int getScore();
+void addScore(int points);
+int getCurrentStage();
+int getCookiesEaten();
+void eatCookie();
+int getTotalCookies();
+// GameState getCurrentGameState();
+void setGameState(GameState state);
+int isPowerModeActive();
+void setPowerMode(int mode);
+double getPowerModeTimer();
+void setPowerModeTimer(double timer);
+int getGhostReleased();
+void setGhostReleased(int count);
+void addGhostReleased(int value);
+double getGhostReleaseTimer();
+void setGhostReleaseTimer(double timer);
 
 // 게임 관련 함수
 void initialize();
@@ -38,10 +59,6 @@ void handlePacmanDeath(Pacman* pacman);
 void handleGhostEaten(Ghost* ghost, int* score);
 int isLevelComplete();
 CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost);
-void enqueueGhost(Ghost* ghost);
-Ghost* frontGhost();
-void dequeueGhost();
-void clearGhostQueue();
 void spawnBonusFruit(const Pacman* pacman);
 void updateBonusFruit();
 void updateBackGroundMusic();

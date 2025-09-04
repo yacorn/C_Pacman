@@ -174,7 +174,7 @@ void restoreMap(const int source_map[MAP_HEIGHT][MAP_WIDTH]) {
     debug_log("Map restored successfully\n");
 }
 
-int getTotalCookies(void) {
+int getCurrentMapTotalCookies(void) {
     return getMapCookieCount(current_map);
 }
 
@@ -190,4 +190,21 @@ int getMapCookieCount(const int map[MAP_HEIGHT][MAP_WIDTH]) {
     }
     
     return total;
+}
+
+int getCurrentMapTileAt(int x, int y) {
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) {
+        debug_log("ERROR: Invalid coordinates (%d, %d) requested for map tile\n", x, y);
+        return -1;  // Invalid coordinates
+    }
+    return current_map[y][x];
+}
+
+void setCurrentMapTileAt(int x, int y, int new_tile) {
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) {
+        debug_log("ERROR: Invalid coordinates (%d, %d) for updating map tile\n", x, y);
+        return;  // Invalid coordinates
+    }
+    current_map[y][x] = new_tile;
+    return;  // Success
 }

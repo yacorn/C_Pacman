@@ -15,5 +15,6 @@ void playSoundAndWait(const char* filename, const char* alias);
 void stopSoundMci(const char* alias);
 void debug_log(const char* format, ...);
 int isSoundFinished(const char* alias);
+void handleSound();
 
 #endif // SOUND_H

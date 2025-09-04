@@ -19,27 +19,27 @@ static double fps_timer = 0.0;
 static int fps_counter = 0;
 static int current_fps = 0;
 
-HANDLE screen[2];
-int screen_index = 0;
-int game_time = 0;
-int score = 0;
-int power_mode = 0;
-double power_mode_timer = 0.0;
+static int score = 0;
+static int power_mode = 0;
+static double power_mode_timer = 0.0;
+static int cookies_eaten = 0;
+static int current_stage = 1;
+static int game_time = 0;
+static int ghost_released = 1;
+static double ghost_release_timer = 0.0;
+static double ghost_release_interval = 0.0;
+
+GameState current_state = STATE_TITLE;
 int total_cookies = 0;
-int cookies_eaten = 0;
-int ghost_released = 1;
-int current_stage = 1;
 int is_bgm_playing = 0;
 int is_first_start = 1;
 int current_siren_level = 1;
 int power_music_active = 0;
 int ghost_back_active = 0;
-double ghost_release_timer = 0.0;
-double ghost_release_interval = 0.0;
 double ready_delay_timer = 0.0;
-// ... (모든 전역 변수 정의)
 int debug_mode = 0;
-GameState current_state = STATE_TITLE;
+// ... (모든 전역 변수 정의)
+
 MenuOption current_menu_selection = MENU_START_GAME;  // 메뉴 선택 초기화
 // GhostReleaseCondition release_conditions[] = {
 //     {0, 0, 0},
@@ -47,10 +47,6 @@ MenuOption current_menu_selection = MENU_START_GAME;  // 메뉴 선택 초기화
 //     {0, 0, 600},
 //     {0, 0, 900}
 // };
-
-Ghost ghosts[MAX_GHOSTS];
-Ghost* ghostQueue[MAX_GHOSTS];
-int queue_front = 0, queue_rear = 0, queue_count = 0;
 
 Fruit bonus_fruit = {-1, -1, 0, 0.0, 0, 0};
 
@@ -93,19 +89,7 @@ void initialize() {
     // hideCursor();
     // SetConsoleOutputCP(65001);
     // SetConsoleCP(65001);
-    screen[0] = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-    screen[1] = CreateConsoleScreenBuffer(GENERIC_READ | GENERIC_WRITE, 0, NULL, CONSOLE_TEXTMODE_BUFFER, NULL);
-
-    DWORD dwMode = 0;
-    GetConsoleMode(screen[0], &dwMode);
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(screen[0], dwMode);
-
-    GetConsoleMode(screen[1], &dwMode);
-    dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
-    SetConsoleMode(screen[1], dwMode);
-
-    hideCursor();
+    initializeRenderSystem();
     restoreMap(map_stage1);
     
     // 랜덤 시드 초기화
@@ -125,8 +109,6 @@ void resetGame(Pacman* pacman){
     
     cookies_eaten = 0;
     
-    ghost_released = 1;
-    ghost_release_timer = 0;
     ghost_release_interval = 5.0 - (current_stage - 1) * 0.5; // 5초에서 점점 빨라짐
     if (ghost_release_interval < 2.0) ghost_release_interval = 2.0; // 최소 2.0 초 유지
 
@@ -134,16 +116,11 @@ void resetGame(Pacman* pacman){
     power_mode_timer = 0;
     
     // 보너스 과일 초기화
-    bonus_fruit.active = 0;
-    bonus_fruit.timer = 0;
+    initializeBonusFruit();
     
     initializePacman(pacman, 3);
 
     restoreMap(map_stage1);
-
-    queue_count = 0;
-    queue_front = 0;
-    queue_rear = 0;
 
     initializeGhosts();
 
@@ -151,7 +128,7 @@ void resetGame(Pacman* pacman){
     is_first_start = 1;
     current_siren_level = 1;
     ready_delay_timer = 0;
-    total_cookies = getTotalCookies();
+    total_cookies = getCurrentMapTotalCookies();
 }
 
 void nextStage(Pacman* pacman){
@@ -171,11 +148,9 @@ void nextStage(Pacman* pacman){
     int next_stage_index = (current_stage - 1 ) % MAX_STAGES;
     restoreMap(all_maps[next_stage_index]);
 
-    total_cookies = getTotalCookies();
+    total_cookies = getCurrentMapTotalCookies();
 
-    cookies_eaten = 0;
-    ghost_released = 1;
-    ghost_release_timer = 0;
+    cookies_eaten = 0;;
     power_mode = 0;
     power_mode_timer = 0;
     current_siren_level = 1;
@@ -183,17 +158,13 @@ void nextStage(Pacman* pacman){
     ready_delay_timer = 0;
 
     // 보너스 과일 초기화
-    bonus_fruit.active = 0;
-    bonus_fruit.timer = 0;
+    initializeBonusFruit();
 
-    current_state = STATE_READY;
+    setGameState(STATE_READY);
 
     // Pacman 초기화
     initializePacman(pacman, pacman->lives);
 
-    queue_count = 0;
-    queue_front = 0;
-    queue_rear = 0;
     initializeGhosts();
 
     
@@ -206,6 +177,20 @@ void initializePacman(Pacman* pacman, int lives){
     pacman->prev_y = PACMAN_SPAWN_Y;
     pacman->direction = DIR_NONE;
     pacman->lives = lives;
+}
+
+void initializeBonusFruit(){
+    // 보너스 과일이 생성되었다면 빈 칸으로 초기화
+    if(bonus_fruit.active){
+        setCurrentMapTileAt(bonus_fruit.x, bonus_fruit.y, EMPTY);
+    }
+    // 보너스 과일 상태 초기화
+    bonus_fruit.active = 0;
+    bonus_fruit.timer = 0.0;
+    bonus_fruit.x = -1;
+    bonus_fruit.y = -1;
+    bonus_fruit.type = 0;
+    bonus_fruit.score = 0;
 }
 
 void handleCollisions(Pacman* pacman, int* score){
@@ -228,7 +213,7 @@ void handleCollisions(Pacman* pacman, int* score){
 
 void handlePacmanDeath(Pacman* pacman){
     pacman->lives--;
-    current_state = STATE_PACMAN_DEATH;
+    setGameState(STATE_PACMAN_DEATH);
 
     // 팩맨 방향 초기화
     pacman->direction = DIR_NONE;
@@ -271,48 +256,6 @@ void handleGhostEaten(Ghost* ghost, int* score){
 
 int isLevelComplete(){
     return cookies_eaten >= total_cookies;
-}
-
-void enqueueGhost(Ghost* ghost){
-    if(queue_count < MAX_GHOSTS){
-
-        for(int i = 0; i < queue_count; i++){
-            int queue_index = (queue_front + i) % MAX_GHOSTS;
-            if(ghostQueue[queue_index] == ghost){
-                return;
-            }
-        }
-
-        ghostQueue[queue_rear] = ghost;
-        queue_rear = (queue_rear + 1) % MAX_GHOSTS;
-        queue_count++;
-        ghost->state = WAITING;
-        ghost->direction = DIR_NONE;
-    }
-}
-
-Ghost* frontGhost() {
-    if(queue_count > 0) return ghostQueue[queue_front];
-    return NULL;
-}
-
-void dequeueGhost(){
-    if(queue_count > 0){
-        Ghost* ghost = ghostQueue[queue_front];
-        ghost->state = EXITING;
-        queue_front = (queue_front + 1) % MAX_GHOSTS;
-        queue_count--;
-    }
-}
-
-void clearGhostQueue(){
-    queue_front = 0;
-    queue_rear = 0;
-    queue_count = 0;
-
-    for(int i = 0; i < MAX_GHOSTS; i++){
-        ghostQueue[i] = NULL;
-    }
 }
 
 void getNextPosition(int* x, int* y, Direction dir){
@@ -436,7 +379,7 @@ void handleLogic(Pacman* pacman) {
                 stopSoundMci("start_game");
                 is_first_start = 0;
                 is_bgm_playing = 0;
-                current_state = STATE_PLAYING;
+                setGameState(STATE_PLAYING);
             }
             break;
             
@@ -460,10 +403,10 @@ void handleLogic(Pacman* pacman) {
                     // 모든 스테이지 완료 - 바로 올클리어!
                     int bonus_score = pacman->lives * SCORE_LEFT_LIFE_BONUS;
                     score += bonus_score;
-                    current_state = STATE_ALL_CLEAR;
+                    setGameState(STATE_ALL_CLEAR);
                 } else {
                     // 일반 스테이지 클리어
-                    current_state = STATE_LEVEL_COMPLETE;
+                    setGameState(STATE_LEVEL_COMPLETE);
                 }
                 break;
             }
@@ -493,14 +436,16 @@ void handleLogic(Pacman* pacman) {
             if(isSoundFinished("pacman_dying")){
                 initializePacman(pacman, pacman->lives); // 팩맨 위치 초기화
                 initializeGhosts(); // 모든 유령을 초기 상태로
+                initializeBonusFruit(); // 보너스 과일 초기화
+
                 ghost_released = 1;
                 ghost_release_timer = 0;
                 ready_delay_timer = 0;
-                
+        
                 if (pacman->lives <= 0) {
-                    current_state = STATE_GAME_OVER;
+                    setGameState(STATE_GAME_OVER);
                 } else {
-                    current_state = STATE_READY;
+                    setGameState(STATE_READY);
                 }
             }
             break;
@@ -543,11 +488,11 @@ void handleInput(Pacman* pacman) {
             if(GetAsyncKeyState(VK_RETURN) & 0x0001) {
                 switch(current_menu_selection) {
                     case MENU_START_GAME:
-                        current_state = STATE_READY;
+                        setGameState(STATE_READY);
                         resetGame(pacman);
                         break;
                     case MENU_HOW_TO_PLAY:
-                        current_state = STATE_HELP;
+                        setGameState(STATE_HELP);
                         break;
                     case MENU_EXIT_GAME:
                         exit(0);
@@ -572,7 +517,7 @@ void handleInput(Pacman* pacman) {
 
                 if(enter_released){
                     if((GetAsyncKeyState(VK_ESCAPE) & 0x0001) || (GetAsyncKeyState(VK_SPACE) & 0x0001)) {
-                        current_state = STATE_TITLE;
+                        setGameState(STATE_TITLE);
                         enter_released = 0;
                     }
                 }
@@ -603,7 +548,7 @@ void handleInput(Pacman* pacman) {
                         nextStage(pacman);
                         game_complete_delay = 0;
                     } else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                        current_state = STATE_TITLE;
+                        setGameState(STATE_TITLE);
                         stopAllGameSounds();
                         game_complete_delay = 0;
                     }
@@ -618,12 +563,12 @@ void handleInput(Pacman* pacman) {
 
                 if(game_over_delay > 1){
                     if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
-                        current_state = STATE_READY;
+                        setGameState(STATE_READY);
                         resetGame(pacman);
                         game_over_delay = 0;
                     }
                     else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                        current_state = STATE_TITLE;
+                        setGameState(STATE_TITLE);
                         game_over_delay = 0;
                     }
                 }
@@ -632,11 +577,11 @@ void handleInput(Pacman* pacman) {
 
         case STATE_ALL_CLEAR:
             if((GetAsyncKeyState('R') & 0x0001) || (GetAsyncKeyState('r') & 0x0001)){
-                current_state = STATE_READY;
+                setGameState(STATE_READY);
                 resetGame(pacman);
             }
             else if(GetAsyncKeyState(27) & 0x0001){ // ESC 키
-                current_state = STATE_TITLE;
+                setGameState(STATE_TITLE);
             }
             break;
     }
@@ -656,28 +601,28 @@ void handleRender(Pacman* pacman) {
             break;
 
         case STATE_READY:
-            renderGameplayScreen(pacman, score);
+            renderGameplayScreen(pacman);
             drawEntity(MAP_WIDTH/2 - 1, MAP_HEIGHT/2 + 2, "Ready!", ANSI_YELLOW);
             break;
 
         case STATE_PLAYING:
-            renderGameplayScreen(pacman, score);
+            renderGameplayScreen(pacman);
             break;
 
         case STATE_PACMAN_DEATH:
-            renderGameplayScreen(pacman, score);
+            renderGameplayScreen(pacman);
             break;
         
         case STATE_LEVEL_COMPLETE:
-            renderGameComplete(pacman, score);
+            renderGameComplete(pacman);
             break;
 
         case STATE_GAME_OVER:
-            renderGameOver(pacman, score);
+            renderGameOver(pacman);
             break;
 
         case STATE_ALL_CLEAR:
-            renderAllClear(pacman, score);
+            renderAllClear(pacman);
             break;
     }
     
@@ -806,9 +751,9 @@ void spawnBonusFruit(const Pacman* pacman) {
         int random_x = (rand() % (MAP_WIDTH - 2)) + 1;   // 벽을 피하기 위해 1~MAP_WIDTH-2
         int random_y = (rand() % (MAP_HEIGHT - 2)) + 1;  // 벽을 피하기 위해 1~MAP_HEIGHT-2
         
-        // 해당 위치가 빈 공간이거나 쿠키가 있는 곳인지 확인
+        // 해당 위치가 빈 공간인지 확인 (쿠키가 있는 위치 제외)
         int tile = current_map[random_y][random_x];
-        if (tile == EMPTY || tile == COOKIE || tile == POWER_COOKIE) {
+        if (tile == EMPTY) {
             // 팩맨이나 유령이 있는 위치는 피하기
             int position_occupied = 0;
             
@@ -835,12 +780,7 @@ void spawnBonusFruit(const Pacman* pacman) {
                 bonus_fruit.type = rand() % FRUIT_COUNT; // 랜덤 과일 타입
                 bonus_fruit.timer = FRUIT_MIN_DURATION + (rand() % (FRUIT_MAX_DURATION - FRUIT_MIN_DURATION + 1)); // 32~48 프레임 (8~12초, 프레임 단위)
                 bonus_fruit.score = getFruitScore(bonus_fruit.type);
-
-                // 만약 쿠키가 있던 자리에 과일이 생성되었다면 쿠키를 제거하고 총 쿠키 수 재계산
-                if (tile == COOKIE || tile == POWER_COOKIE) {
-                    current_map[random_y][random_x] = EMPTY;
-                    total_cookies = getTotalCookies(); // 쿠키 개수 재계산
-                }
+                
                 
                 debug_log("Bonus fruit spawned at (%d, %d), total_cookies: %d\n", 
                          random_x, random_y, total_cookies);
@@ -856,13 +796,6 @@ void spawnBonusFruit(const Pacman* pacman) {
         bonus_fruit.x = 13;  // 기본 위치
         bonus_fruit.y = 17;
         bonus_fruit.timer = 32 + (rand() % 17); // 8~12초 (32~48 프레임)
-        
-        // 기본 위치에 쿠키가 있다면 제거하고 재계산
-        int tile = current_map[17][13];
-        if (tile == COOKIE || tile == POWER_COOKIE) {
-            current_map[17][13] = EMPTY;
-            total_cookies = getTotalCookies();
-        }
         
         debug_log("Bonus fruit spawned at default position (13, 17)\n");
     }
@@ -954,7 +887,7 @@ void updateReadyState(double dt){
         ready_delay_timer -= dt;
 
         if (!is_first_start && ready_delay_timer <= 0) {
-            current_state = STATE_PLAYING;
+            setGameState(STATE_PLAYING);
             debug_log("Ready period ended - Game started\n");
         }
     }
@@ -1006,4 +939,78 @@ double getDeltaTime() {
 // 현재 FPS 반환
 int getCurrentFPS() {
     return current_fps;
+}
+
+/*
+int score = 0;
+int power_mode = 0;
+double power_mode_timer = 0.0;
+int cookies_eaten = 0;
+int current_stage = 1;
+GameState current_state = STATE_TITLE;
+*/
+
+int getScore() {
+    return score;
+}
+
+void addScore(int points) {
+    score += points;
+    if (score < 0) score = 0; // 점수가 음수가 되지 않도록
+}
+
+int getCurrentStage() {
+    return current_stage;
+}
+
+int getCookiesEaten() {
+    return cookies_eaten;
+}
+
+void eatCookie() {
+    cookies_eaten++;
+}
+
+// GameState getCurrentGameState() {
+//     return current_state;
+// }
+
+void setGameState(GameState state){
+    current_state = state;
+}
+
+int isPowerModeActive() {
+    return power_mode;
+}
+
+void setPowerMode(int mode){
+    power_mode = mode;
+}
+
+double getPowerModeTimer() {
+    return power_mode_timer;
+}
+
+void setPowerModeTimer(double timer) {
+    power_mode_timer = timer;
+}
+
+int getGhostReleased() {
+    return ghost_released;
+}
+
+void setGhostReleased(int value) {
+    ghost_released = value;
+}
+
+void addGhostReleased(int value) {
+    ghost_released += value;
+}
+
+double getGhostReleaseTimer() {
+    return ghost_release_timer;
+}
+
+void setGhostReleaseTimer(double timer) {
+    ghost_release_timer = timer;
 }

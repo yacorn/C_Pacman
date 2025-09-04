@@ -27,7 +27,10 @@ extern const int MAX_STAGES;
 // 맵 관리 함수들
 void initializeMaps(void);
 void restoreMap(const int source_map[MAP_HEIGHT][MAP_WIDTH]);
-int getTotalCookies(void);
+int getCurrentMapTotalCookies(void);
 int getMapCookieCount(const int map[MAP_HEIGHT][MAP_WIDTH]);
+
+int getCurrentMapTileAt(int x, int y);
+void setCurrentMapTileAt(int x, int y, int new_tile);
 
 #endif // MAPS_H

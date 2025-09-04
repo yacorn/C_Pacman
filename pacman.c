@@ -6,19 +6,19 @@
 static int handleItemConsumption(Pacman* pacman, int next_x, int next_y){
     if(current_map[next_y][next_x] == COOKIE){
         current_map[next_y][next_x] = EMPTY;
-        cookies_eaten++;
-        score += SCORE_COOKIE; // 점수 증가
+        eatCookie();
+        addScore(SCORE_COOKIE); // 점수 증가
 
         return 1;
     } else if(current_map[next_y][next_x] == POWER_COOKIE){
         current_map[next_y][next_x] = EMPTY;
-        cookies_eaten++;
-        score += SCORE_POWER_COOKIE; // 점수 증가
+        eatCookie();
+        addScore(SCORE_POWER_COOKIE); // 점수 증가
         activatePowerMode();
 
         return 1;
-    } else if(bonus_fruit.active && pacman->x == bonus_fruit.x && pacman->y == bonus_fruit.y){
-        score += bonus_fruit.score;
+    } else if(bonus_fruit.active && next_x == bonus_fruit.x && next_y == bonus_fruit.y){
+        addScore(bonus_fruit.score);
         bonus_fruit.active = 0;
         PlaySound(TEXT("sounds/eating_fruit.wav"), NULL, SND_FILENAME | SND_ASYNC);
 
@@ -195,8 +195,8 @@ void processInput(Pacman* pacman){
 void activatePowerMode() {
     debug_log("=== activatePowerMode called ===\n");
     
-    power_mode = 1;
-    power_mode_timer = POWER_MODE_DURATION;
+    setPowerMode(1);
+    setPowerModeTimer(POWER_MODE_DURATION);
 
     debug_log("Stopping siren...\n");
     stopSoundMci("siren");
