@@ -94,7 +94,7 @@ void updatePacman(Pacman* pacman){
     
 }
 
-void processInput(Pacman* pacman){
+void handlePlayerInput(Pacman* pacman){
     if(GetAsyncKeyState(VK_SPACE) & 0x0001){
         debug_mode = !debug_mode;
     }
@@ -109,6 +109,12 @@ void processInput(Pacman* pacman){
         desired_direction = DIR_LEFT;
     } else if(GetAsyncKeyState(VK_RIGHT) & 0x0001) {
         desired_direction = DIR_RIGHT;
+    } else if(GetAsyncKeyState('P') & 0x0001){
+        if(getCurrentGameState() == STATE_PLAYING){
+            setGamePaused(1);
+            stopAllGameSounds();
+            setGameState(STATE_GAME_PAUSE);
+        }
     }
 
     if(desired_direction != DIR_NONE){
@@ -198,12 +204,7 @@ void activatePowerMode() {
     setPowerMode(1);
     setPowerModeTimer(POWER_MODE_DURATION);
 
-    debug_log("Stopping siren...\n");
-    stopSoundMci("siren");
-
-    debug_log("Playing power_up.wav (single play)...\n");
-    playSoundMci("sounds/power_up.wav", "power_up", 0); // loop = 0으로 변경
-    setPowerMusicActive(1); // 플래그 설정
+    playPowerModeSound();
 
     for(int i = 0; i < MAX_GHOSTS; i++){
         if(ghosts[i].state == CHASING){

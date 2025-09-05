@@ -90,6 +90,10 @@ void handleRender(Pacman* pacman) {
         case STATE_PLAYING:
             renderGameplayScreen(pacman);
             break;
+        
+        case STATE_GAME_PAUSE:
+            renderPauseScreen(pacman);
+            break;
 
         case STATE_PACMAN_DEATH:
             renderGameplayScreen(pacman);
@@ -234,6 +238,10 @@ void drawGameStateInfo() {
         case STATE_PLAYING:
             sprintf(buffer, "STATUS: PLAYING");
             drawEntity(state_x / 2, base_y + 3, buffer, ANSI_GREEN);
+            break;
+        case STATE_GAME_PAUSE:
+            sprintf(buffer, "STATUS: PAUSED");
+            drawEntity(state_x / 2, base_y + 3, buffer, ANSI_MAGENTA ANSI_BLINK);
             break;
         case STATE_TITLE:
             sprintf(buffer, "STATUS: TITLE");
@@ -827,25 +835,26 @@ void renderHelpScreen() {
     
     drawEntity(2, start_y + 7, "CONTROLS:", ANSI_GREEN ANSI_BOLD);
     drawEntity(4, start_y + 8, "- Arrow Keys: Move Pacman", ANSI_WHITE);
-    drawEntity(4, start_y + 9, "- ESC: Exit Game", ANSI_WHITE);
+    drawEntity(4, start_y + 9, "- P: Pause Game", ANSI_WHITE);
+    drawEntity(4, start_y + 10, "- ESC: Exit Game", ANSI_WHITE);
     
-    drawEntity(2, start_y + 11, "GAME ELEMENTS:", ANSI_GREEN ANSI_BOLD);
-    drawEntity(4, start_y + 12, "O Pacman (You)", PACMAN_COLOR);
-    drawEntity(4, start_y + 13, ". Cookie (10 points)", ANSI_YELLOW);
-    drawEntity(4, start_y + 14, "O Power Cookie (50 points, weakens ghosts)", ANSI_YELLOW ANSI_BOLD);
-    drawEntity(4, start_y + 15, "O Red Ghost (Chaser)", GHOST_RED_COLOR);
-    drawEntity(4, start_y + 16, "O Pink Ghost (Ambusher)", GHOST_PINK_COLOR);
-    drawEntity(4, start_y + 17, "O Green Ghost (Random)", GHOST_GREEN_COLOR);
-    drawEntity(4, start_y + 18, "O Orange Ghost (Patrol)", GHOST_ORANGE_COLOR);
+    drawEntity(2, start_y + 12, "GAME ELEMENTS:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 13, "O Pacman (You)", PACMAN_COLOR);
+    drawEntity(4, start_y + 14, ". Cookie (10 points)", ANSI_YELLOW);
+    drawEntity(4, start_y + 15, "O Power Cookie (50 points, weakens ghosts)", ANSI_YELLOW ANSI_BOLD);
+    drawEntity(4, start_y + 16, "O Red Ghost (Chaser)", GHOST_RED_COLOR);
+    drawEntity(4, start_y + 17, "O Pink Ghost (Ambusher)", GHOST_PINK_COLOR);
+    drawEntity(4, start_y + 18, "O Green Ghost (Random)", GHOST_GREEN_COLOR);
+    drawEntity(4, start_y + 19, "O Orange Ghost (Patrol)", GHOST_ORANGE_COLOR);
     
-    drawEntity(2, start_y + 20, "SCORING:", ANSI_GREEN ANSI_BOLD);
-    drawEntity(4, start_y + 21, "- Cookie: 10 points", ANSI_WHITE);
-    drawEntity(4, start_y + 22, "- Power Cookie: 50 points", ANSI_WHITE);
-    drawEntity(4, start_y + 23, "- Ghost: 200 points", ANSI_WHITE);
-    drawEntity(4, start_y + 24, "- Bonus Fruit: 100 points", ANSI_WHITE);
+    drawEntity(2, start_y + 21, "SCORING:", ANSI_GREEN ANSI_BOLD);
+    drawEntity(4, start_y + 22, "- Cookie: 10 points", ANSI_WHITE);
+    drawEntity(4, start_y + 23, "- Power Cookie: 50 points", ANSI_WHITE);
+    drawEntity(4, start_y + 24, "- Ghost: 200 points", ANSI_WHITE);
+    drawEntity(4, start_y + 25, "- Bonus Fruit: 100 points", ANSI_WHITE);
     
     // 돌아가기 안내
-    drawEntity(center_x - 6, start_y + 27, "Press any ESC or SPACE to go back", ANSI_CYAN ANSI_BOLD);
+    drawEntity(center_x - 6, start_y + 28, "Press any ESC or SPACE to go back", ANSI_CYAN ANSI_BOLD);
 }
 
 // 하이스코어 화면 렌더링
@@ -901,4 +910,37 @@ void renderHighScoreScreen() {
     
     // 하단 메시지
     drawEntity(start_x + 8, start_y + 20, "Press ESC or SPACE to go back", ANSI_WHITE ANSI_BOLD);
+}
+
+// 일시정지 화면 렌더링
+void renderPauseScreen(const Pacman* pacman) {
+    // 0: Resume, 1: Quit
+    const char* menu_texts[PAUSE_MENU_COUNT] = {"Resume Game", "Quit to Title"};
+    const char* menu_colors[PAUSE_MENU_COUNT] = {ANSI_WHITE, ANSI_WHITE};
+    
+    int center_x = MAP_WIDTH / 2;
+    int center_y = MAP_HEIGHT / 2;
+
+
+    // 게임 현재 상태 그대로 렌더링 (어둡게)
+    for (int y = 0; y < MAP_HEIGHT; y++){
+        for(int x = 0; x < MAP_WIDTH; x++){
+            drawEntity(x, y, "#", ANSI_BRIGHT_BLACK);
+        }
+    }
+    renderGameplayScreen(pacman);
+
+    // 일시정지 메뉴 박스
+    drawEntity(center_x - 7, center_y - 2, "+==========================+", ANSI_WHITE ANSI_BOLD);
+    drawEntity(center_x - 7, center_y - 1, "|        GAME PAUSED       |", ANSI_CYAN ANSI_BOLD ANSI_BLINK);
+    drawEntity(center_x - 7, center_y,     "+==========================+", ANSI_WHITE ANSI_BOLD);
+    for(int i = 0; i < PAUSE_MENU_COUNT; i++) {
+        if(i == current_pause_menu_selection) {
+            drawEntity(center_x - 4, center_y + 1 + i, "> ", ANSI_GREEN ANSI_BOLD);
+            drawEntity(center_x - 3, center_y + 1 + i, menu_texts[i], ANSI_GREEN ANSI_BOLD);
+        } else {
+            drawEntity(center_x - 4, center_y + 1 + i, "  ", ANSI_WHITE);
+            drawEntity(center_x - 3, center_y + 1 + i, menu_texts[i], ANSI_WHITE);
+        }
+    }
 }

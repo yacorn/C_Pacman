@@ -25,6 +25,7 @@ static int power_mode = 0;
 static double power_mode_timer = 0.0;
 static int current_stage = 1;
 static int game_time = 0;
+static int is_game_paused = 0;
 
 GameState current_state = STATE_TITLE;
 static int is_first_start = 1;
@@ -34,11 +35,14 @@ int debug_mode = 0;
 // ... (모든 전역 변수 정의)
 
 MenuOption current_menu_selection = MENU_START_GAME;  // 메뉴 선택 초기화
+PauseMenuOption current_pause_menu_selection = PAUSE_MENU_RESUME;
 
 Fruit bonus_fruit = {-1, -1, 0, 0.0, 0, 0};
 HighScoreEntry new_highscore_entry = {"", 0, 0, 0, 1};
 
 // --- 함수 구현 ---
+
+// 초기화 함수
 void initialize() {
     // HANDLE std_handle = GetStdHandle(STD_OUTPUT_HANDLE);
 
@@ -90,6 +94,7 @@ void initialize() {
     QueryPerformanceCounter(&last_time);
 }
 
+// 보너스 과일 초기화
 void initializeBonusFruit(){
     // 보너스 과일이 생성되었다면 빈 칸으로 초기화
     if(bonus_fruit.active){
@@ -104,6 +109,7 @@ void initializeBonusFruit(){
     bonus_fruit.score = 0;
 }
 
+// 새로운 하이스코어 엔트리 초기화
 void initializeNewHighScoreEntry(){
     new_highscore_entry.nickname[0] = '\0';
     new_highscore_entry.cursor_pos = 0;
@@ -112,10 +118,11 @@ void initializeNewHighScoreEntry(){
     new_highscore_entry.achieved_stage = 1;
 }
 
+// 게임 초기화
 void resetGame(Pacman* pacman){
     current_stage = 1;
     
-    score = 100000;
+    score = 0;
     
     game_time = 0;
 
@@ -141,9 +148,11 @@ void resetGame(Pacman* pacman){
     is_first_start = 1;
     setCurrentSirenLevel(1);
     resetReadyTimer();
+    resetDebugMode();
     setTotalCookies(getCurrentMapRemainingCookies());
 }
 
+// 다음 스테이지로 넘어가기
 void nextStage(Pacman* pacman){
     // 스테이지 클리어 보너스
     score += current_stage * SCORE_STAGE_CLEAR;
@@ -183,6 +192,7 @@ void nextStage(Pacman* pacman){
     
 }
 
+// 충돌 처리 함수
 void handleCollisions(Pacman* pacman, int* score){
     for(int i = 0; i < MAX_GHOSTS; i++){
         CollisionResult result = checkCollision(pacman, &ghosts[i]);
@@ -201,10 +211,12 @@ void handleCollisions(Pacman* pacman, int* score){
     }
 }
 
+// 레벨 완료 체크
 int isLevelComplete(){
     return getCookiesEaten() >= getTotalCookies();
 }
 
+// 방향에 따른 다음 좌표 계산
 void getNextPosition(int* x, int* y, Direction dir){
     switch(dir){
         case DIR_UP: (*y)--; break;
@@ -216,6 +228,7 @@ void getNextPosition(int* x, int* y, Direction dir){
     }
 }
 
+// 고스트 상태에 따른 이동 가능 여부 판단
 static CollisionResult getCollisionType(const Ghost* ghost){
     switch(ghost->state){
         case CHASING:    return COLLISION_PACMAN_DIES;
@@ -224,6 +237,7 @@ static CollisionResult getCollisionType(const Ghost* ghost){
     }
 }
 
+// 충돌 검사 함수
 CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost){
     
     if(pacman->x == ghost->x && pacman->y == ghost->y)
@@ -241,6 +255,7 @@ CollisionResult checkCollision(const Pacman* pacman, const Ghost* ghost){
     
 }
 
+// 메인 게임 로직 처리 함수 (업데이트 담당)
 void handleLogic(Pacman* pacman) {
     switch(current_state) {
         case STATE_TITLE:
@@ -312,6 +327,10 @@ void handleLogic(Pacman* pacman) {
             game_time++;
             break;
 
+        case STATE_GAME_PAUSE:
+            // 일시정지 상태에서는 로직 없음
+            break;
+
         case STATE_PACMAN_DEATH:
             if(isSoundFinished("pacman_dying")){
                 initializePacman(pacman, pacman->lives); // 팩맨 위치 초기화
@@ -356,37 +375,7 @@ void handleLogic(Pacman* pacman) {
 void handleInput(Pacman* pacman) {
     switch(current_state) {
         case STATE_TITLE:
-            // 메뉴 내비게이션
-            if(GetAsyncKeyState(VK_UP) & 0x0001) {
-                current_menu_selection = (current_menu_selection - 1 + MENU_COUNT) % MENU_COUNT;
-            }
-            if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
-                current_menu_selection = (current_menu_selection + 1) % MENU_COUNT;
-            }
-            
-            // 엔터 키로 선택 확정
-            if(GetAsyncKeyState(VK_RETURN) & 0x0001) {
-                switch(current_menu_selection) {
-                    case MENU_START_GAME:
-                        setGameState(STATE_READY);
-                        resetGame(pacman);
-                        break;
-                    case MENU_HOW_TO_PLAY:
-                        setGameState(STATE_HELP);
-                        break;
-                    case MENU_HIGH_SCORE:
-                        setGameState(STATE_HIGHSCORE);
-                        break;
-                    case MENU_EXIT_GAME:
-                        exit(0);
-                        break;
-                }
-            }
-            
-            // ESC 키로 종료
-            if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
-                exit(0);
-            }
+            handleGameTitleInput(pacman);
             break;
 
         case STATE_HELP:
@@ -420,7 +409,11 @@ void handleInput(Pacman* pacman) {
             
         case STATE_PLAYING:
             // 팩맨 입력 처리만
-            processInput(pacman);
+            handlePlayerInput(pacman);
+            break;
+
+        case STATE_GAME_PAUSE:
+            handleGamePauseInput(pacman);
             break;
 
         case STATE_PACMAN_DEATH:
@@ -462,6 +455,69 @@ void handleInput(Pacman* pacman) {
     }
 }
 
+// 타이틀 화면에서 입력 처리
+void handleGameTitleInput(Pacman* pacman){
+    // 메뉴 내비게이션
+    if(GetAsyncKeyState(VK_UP) & 0x0001) {
+        current_menu_selection = (current_menu_selection - 1 + MENU_COUNT) % MENU_COUNT;
+    }
+    if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
+        current_menu_selection = (current_menu_selection + 1) % MENU_COUNT;
+    }
+
+    // 엔터 키로 선택 확정
+    if(GetAsyncKeyState(VK_RETURN) & 0x0001) {
+        switch(current_menu_selection) {
+            case MENU_START_GAME:
+                setGameState(STATE_READY);
+                resetGame(pacman);
+                break;
+            case MENU_HOW_TO_PLAY:
+                setGameState(STATE_HELP);
+                break;
+            case MENU_HIGH_SCORE:
+                setGameState(STATE_HIGHSCORE);
+                break;
+            case MENU_EXIT_GAME:
+                exit(0);
+                break;
+        }
+    }
+
+    // ESC 키로 종료
+    if(GetAsyncKeyState(VK_ESCAPE) & 0x0001) {
+        exit(0);
+    }
+}
+
+// 일시정지 상태에서 입력 처리
+void handleGamePauseInput(Pacman* pacman){
+    // 메뉴 내비게이션
+    if(GetAsyncKeyState(VK_UP) & 0x0001) {
+        current_pause_menu_selection = (current_pause_menu_selection - 1 + PAUSE_MENU_COUNT) % PAUSE_MENU_COUNT;
+    }
+    if(GetAsyncKeyState(VK_DOWN) & 0x0001) {
+        current_pause_menu_selection = (current_pause_menu_selection + 1) % PAUSE_MENU_COUNT;
+    }
+    
+    // 엔터 키로 선택 확정
+    if(GetAsyncKeyState(VK_RETURN) & 0x0001) {
+        switch(current_pause_menu_selection) {
+            case PAUSE_MENU_RESUME:
+                setGameState(STATE_PLAYING);
+                setGamePaused(0);
+                break;
+            case PAUSE_MENU_QUIT:
+                setGameState(STATE_TITLE);
+                setGamePaused(0);
+                resetGame(pacman);
+                stopAllGameSounds();
+                break;
+        }
+    }
+}
+
+// 게임 오버 상태에서 입력 처리
 void handleGameOverInput(Pacman* pacman){
     int current_score = getScore();
 
@@ -485,6 +541,7 @@ void handleGameOverInput(Pacman* pacman){
     }
 }
 
+// 일반 게임 오버 화면에서 R 또는 ESC 입력 처리
 void handleNormalGameOverInput(Pacman* pacman){
     static int game_over_delay = 0;
     game_over_delay++;
@@ -592,6 +649,7 @@ void finishHighScoreEntry(){
 
     new_highscore_entry.is_active = 0;
 
+    resetDebugMode();
     setGameState(STATE_HIGHSCORE);
 
 }
@@ -804,9 +862,9 @@ int getCurrentStage() {
     return current_stage;
 }
 
-// GameState getCurrentGameState() {
-//     return current_state;
-// }
+GameState getCurrentGameState() {
+    return current_state;
+}
 
 void setGameState(GameState state){
     current_state = state;
@@ -856,4 +914,25 @@ int getHighScoreEntryActive() {
 
 const char* getHighScoreEntryNickname() {
     return new_highscore_entry.nickname;
+}
+
+void setDebugMode(int mode) {
+    debug_mode = mode;
+}
+
+void resetDebugMode() {
+    debug_mode = 0;
+}
+
+int isGamePaused() {
+    return is_game_paused;
+}
+
+void setGamePaused(int paused) {
+    is_game_paused = paused;
+    if(paused){
+        debug_log("Game Paused\n");
+    } else {
+        debug_log("Game Resumed\n");
+    }
 }

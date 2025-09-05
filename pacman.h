@@ -12,7 +12,7 @@ typedef struct {
 
 // 팩맨 관련 함수
 void updatePacman(Pacman* pacman);
-void processInput(Pacman* pacman);
+void handlePlayerInput(Pacman* pacman);
 void activatePowerMode();
 void initializePacman(Pacman* pacman, int lives);
 void handlePacmanDeath(Pacman* pacman);

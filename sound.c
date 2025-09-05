@@ -122,7 +122,10 @@ void stopAllGameSounds() {
     stopSoundMci("siren");
     stopSoundMci("loop_sfx");
     stopSoundMci("power_up");
-    is_bgm_playing = 0;
+    setBgmPlaying(0);
+    setPowerMusicActive(0);
+
+    debug_log("All game sounds stopped\n");
 }
 
 // 사운드 처리 함수
@@ -141,7 +144,19 @@ void handleSound() {
             break;
             
         case STATE_PLAYING:
-            // In the handleSound() function, replace the selection with:
+            if(isPowerModeActive() && getPowerModeTimer() > 0) {
+                if(!isPowerMusicActive()){
+                    // 파워모드가 활성화되었는데 파워 음악이 꺼져있다면 다시 재생
+                    playPowerModeSound();
+                }
+                break; // 파워 모드 중에는 siren 처리 안 함
+            } else {
+                if(isPowerMusicActive()){
+                    // 파워모드가 끝났다면 파워 음악 정지
+                    stopPowerModeSound();
+                }
+            }
+            // siren 사운드 관리
             if(!isPowerModeActive() && current_siren_level == 1 && getCookiesEaten() > (getTotalCookies() * SIREN_LEVEL_CHANGE_THRESHOLD / 100)){
                 current_siren_level = 2;
                 stopSoundMci("siren");
@@ -191,8 +206,11 @@ void handleSound() {
 
 // 배경 음악 및 효과음 업데이트 함수
 void updateBackGroundMusic() {
+    // 파워모드 사운드 관리
     if (isPowerModeActive() && getPowerModeTimer() > 0) {
-        if (power_music_active) {
+        if (!power_music_active){
+            playPowerModeSound();
+        } else if (power_music_active) {
             char command[256];
             char position[256] = {0};
             char length[256] = {0};
@@ -253,6 +271,36 @@ void updateBackGroundMusic() {
             }
         }
     }
+}
+
+void playPowerModeSound(){
+    debug_log("=== playPowerModeSound called ===\n");
+
+    // 기존 사이렌 사운드 정지
+    if(is_bgm_playing){
+        debug_log("Stopping siren for power mode...\n");
+        stopSoundMci("siren");
+        is_bgm_playing = 0;
+    }
+
+    debug_log("Playing power_up.wav (loop)...\n");
+    playSoundMci("sounds/power_up.wav", "power_up", 1); // loop = 1로 변경
+    setPowerMusicActive(1); // 플래그 설정
+
+    debug_log("=== playPowerModeSound end ===\n\n");
+}
+
+void stopPowerModeSound() {
+    debug_log("=== stopPowerModeSound called ===\n");
+    
+    if(power_music_active) {
+        stopSoundMci("power_up");
+        setPowerMusicActive(0);
+        is_bgm_playing = 0; // 사이렌 재시작을 위해 플래그 초기화
+        debug_log("Power mode sound stopped\n");
+    }
+    
+    debug_log("=== stopPowerModeSound end ===\n");
 }
 
 void setBgmPlaying(int playing) {

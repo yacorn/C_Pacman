@@ -26,6 +26,7 @@ typedef struct {
 extern int debug_mode;
 // extern int is_first_start;
 extern MenuOption current_menu_selection;
+extern PauseMenuOption current_pause_menu_selection;
 extern GameState current_state;
 extern Fruit bonus_fruit;
 extern HighScoreEntry new_highscore_entry;
@@ -38,7 +39,7 @@ extern HighScoreEntry new_highscore_entry;
 int getScore();
 void addScore(int points);
 int getCurrentStage();
-// GameState getCurrentGameState();
+GameState getCurrentGameState();
 void setGameState(GameState state);
 int isPowerModeActive();
 void setPowerMode(int mode);
@@ -46,6 +47,11 @@ double getPowerModeTimer();
 void setPowerModeTimer(double timer);
 int getHighScoreEntryActive();
 const char* getHighScoreEntryNickname();
+void setDebugMode(int mode);
+void resetDebugMode();
+void setGamePaused(int paused);
+int isGamePaused();
+
 
 // 게임 관련 함수
 void initialize();
@@ -63,6 +69,8 @@ void updateBonusFruit();
 void handleInput(Pacman* pacman);
 void handleGameOverInput(Pacman* pacman);
 void handleNormalGameOverInput(Pacman* pacman);
+void handleGamePauseInput(Pacman* pacman);
+void handleGameTitleInput(Pacman* pacman);
 void handleHighScoreInput();
 void startHighScoreEntry();
 void finishHighScoreEntry();

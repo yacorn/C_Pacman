@@ -31,7 +31,9 @@ int main() {
         }
         
         // 4. 실시간 타이머 업데이트 (Delta Time 의존적)
-        updateTimersRealTime(dt);
+        if(!isGamePaused()){
+            updateTimersRealTime(dt);
+        }
         
         // 6. 렌더링 (매 프레임)
         handleRender(&pacman);

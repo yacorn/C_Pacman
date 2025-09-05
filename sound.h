@@ -25,5 +25,7 @@ void setCurrentSirenLevel(int level);
 int getCurrentSirenLevel();
 void setPowerMusicActive(int active);
 int isPowerMusicActive();
+void playPowerModeSound(void);
+void stopPowerModeSound(void);
 
 #endif // SOUND_H

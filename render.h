@@ -35,6 +35,7 @@ void drawPacmanDebugInfo(const Pacman* pacman);
 void renderTitleScreen();
 void renderHelpScreen();
 void renderHighScoreScreen();
+void renderPauseScreen(const Pacman* pacman);
 void drawGameStateInfo();
 void drawMapInfo();
 
